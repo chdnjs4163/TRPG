@@ -1,3 +1,4 @@
+// UI 알럿 다이얼로그 - 확인/취소가 있는 경고 모달
 "use client"
 
 import * as React from "react"

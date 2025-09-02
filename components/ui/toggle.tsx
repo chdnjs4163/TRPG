@@ -1,3 +1,4 @@
+// UI 토글 - 온/오프 상태 스위치형 버튼
 "use client"
 
 import * as React from "react"

@@ -1,3 +1,4 @@
+// UI 입력 필드 - 텍스트/이메일/비밀번호 등 기본 입력
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

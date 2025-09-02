@@ -1,3 +1,5 @@
+// 공통 헤더 컴포넌트 - 로고/네비/유저 메뉴 영역
+//재사용 가능한 헤더 구성요소를 정의하는 페이지 
 "use client"
 
 import Link from "next/link"

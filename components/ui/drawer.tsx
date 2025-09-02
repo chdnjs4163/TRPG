@@ -1,3 +1,4 @@
+// UI 드로어 - 화면 하단/측면에서 열리는 패널
 "use client"
 
 import * as React from "react"

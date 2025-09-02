@@ -1,3 +1,4 @@
+// 모바일 감지 훅 - 화면 크기/터치 여부로 모바일 여부 판단
 import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768

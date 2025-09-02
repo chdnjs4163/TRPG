@@ -1,3 +1,4 @@
+// UI 호버 카드 - 마우스 오버 시 보조 정보 표시
 "use client"
 
 import * as React from "react"

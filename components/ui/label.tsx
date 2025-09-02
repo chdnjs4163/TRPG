@@ -1,3 +1,4 @@
+// UI 라벨 - 폼 필드 설명 텍스트
 "use client"
 
 import * as React from "react"

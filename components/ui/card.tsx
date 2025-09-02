@@ -1,3 +1,4 @@
+// UI 카드 - 제목/본문/푸터를 갖는 컨테이너
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

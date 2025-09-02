@@ -1,3 +1,4 @@
+// UI 탭 - 컨텐츠를 탭으로 전환하는 인터페이스
 "use client"
 
 import * as React from "react"

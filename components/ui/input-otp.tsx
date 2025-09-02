@@ -1,3 +1,4 @@
+// UI OTP 입력 - 일회용 인증코드 입력 필드
 "use client"
 
 import * as React from "react"

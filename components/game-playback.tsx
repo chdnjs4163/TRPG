@@ -1,3 +1,4 @@
+// 게임 재생 컴포넌트 - 녹화 데이터를 재생/컨트롤
 "use client"
 
 import { useState, useEffect, useRef } from "react"

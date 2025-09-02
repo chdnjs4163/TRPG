@@ -1,3 +1,4 @@
+// UI 구분선 - 콘텐츠 구획 분리 라인
 "use client"
 
 import * as React from "react"

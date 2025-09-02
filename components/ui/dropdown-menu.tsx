@@ -1,3 +1,4 @@
+// UI 드롭다운 메뉴 - 버튼/아이콘에 연결된 메뉴 목록
 "use client"
 
 import * as React from "react"

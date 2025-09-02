@@ -1,3 +1,4 @@
+// UI 배지 - 상태/라벨 표시용 작은 태그
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 

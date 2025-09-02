@@ -1,3 +1,4 @@
+// UI 다이얼로그 - 모달/시트형 대화 상자
 "use client"
 
 import * as React from "react"

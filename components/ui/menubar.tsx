@@ -1,3 +1,4 @@
+// UI 메뉴바 - 상단/컨텍스트 메뉴 구성 요소
 "use client"
 
 import * as React from "react"

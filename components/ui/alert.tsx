@@ -1,3 +1,4 @@
+// UI 알럿 - 상태 메시지 표시 컴포넌트
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 

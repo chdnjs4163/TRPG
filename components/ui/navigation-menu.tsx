@@ -1,3 +1,4 @@
+// UI 내비게이션 메뉴 - 복합 네비게이션 구성 요소
 import * as React from "react"
 import * as NavigationMenuPrimitive from "@radix-ui/react-navigation-menu"
 import { cva } from "class-variance-authority"

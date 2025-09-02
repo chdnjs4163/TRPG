@@ -1,3 +1,4 @@
+// 게임 상세 페이지 - AI GM과 함께 시나리오 진행 및 채팅/맵/플레이어 관리
 "use client";
 import React from "react";
 import axios from "axios";

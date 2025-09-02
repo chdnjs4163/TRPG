@@ -1,3 +1,4 @@
+// UI 툴팁 - 호버/포커스 시 간단한 설명 표시
 "use client"
 
 import * as React from "react"

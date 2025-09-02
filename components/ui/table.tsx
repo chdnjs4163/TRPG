@@ -1,3 +1,4 @@
+// UI 테이블 - 데이터 표 출력 구성 요소
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

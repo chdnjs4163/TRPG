@@ -1,3 +1,4 @@
+// UI 아코디언 - 접이식 콘텐츠 영역 제공
 "use client"
 
 import * as React from "react"

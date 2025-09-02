@@ -1,3 +1,4 @@
+// UI 슬라이더 - 범위/값 조절 입력
 "use client"
 
 import * as React from "react"

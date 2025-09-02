@@ -1,3 +1,4 @@
+// UI 리사이저블 - 드래그로 영역 크기 조절
 "use client"
 
 import { GripVertical } from "lucide-react"

@@ -1,3 +1,4 @@
+// AI 챗봇 컴포넌트 - 대시보드에서 AI와 대화 지원
 "use client"
 
 import type React from "react"

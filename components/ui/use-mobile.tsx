@@ -1,3 +1,4 @@
+// 모바일 감지 유틸 - 컴포넌트 내에서 모바일 여부 판별 훅
 import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768

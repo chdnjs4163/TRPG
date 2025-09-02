@@ -1,3 +1,4 @@
+// UI 토스트 - 간단한 상태/알림 메시지
 "use client"
 
 import * as React from "react"

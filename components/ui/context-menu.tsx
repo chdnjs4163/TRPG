@@ -1,3 +1,4 @@
+// UI 컨텍스트 메뉴 - 우클릭 메뉴 인터페이스
 "use client"
 
 import * as React from "react"

@@ -1,3 +1,4 @@
+// 대시보드 페이지 - 홈/최근/템플릿/가이드/AI 챗봇 허브
 "use client" // 메인 대시보드(로비 페이지)
 
 import type React from "react"

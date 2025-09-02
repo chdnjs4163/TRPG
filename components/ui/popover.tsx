@@ -1,3 +1,4 @@
+// UI 팝오버 - 클릭/포커스 시 보조 콘텐츠 표시
 "use client"
 
 import * as React from "react"

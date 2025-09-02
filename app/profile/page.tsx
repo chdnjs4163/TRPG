@@ -1,13 +1,21 @@
-"use client"
+// 내 프로필 페이지 - 계정/음성/이미지/캐릭터/템플릿 관리
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { MainNavigation } from "@/components/main-navigation"
-import { UserNav } from "@/components/user-nav"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { MainNavigation } from "@/components/main-navigation";
+import { UserNav } from "@/components/user-nav";
 import {
   Camera,
   Save,
@@ -20,9 +28,9 @@ import {
   Settings,
   ChevronDown,
   ChevronUp,
-} from "lucide-react"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
+} from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -32,7 +40,7 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogClose,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,39 +51,41 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
 
-type SectionType = "account" | "voice" | "images" | "characters" | "templates"
+type SectionType = "account" | "voice" | "images" | "characters" | "templates";
 
 export default function ProfilePage() {
-  const [email, setEmail] = useState("user@example.com")
-  const [username, setUsername] = useState("플레이어1")
-  const [password, setPassword] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [expandedSections, setExpandedSections] = useState<SectionType[]>(["account"])
+  const [email, setEmail] = useState("user@example.com");
+  const [username, setUsername] = useState("플레이어1");
+  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [expandedSections, setExpandedSections] = useState<SectionType[]>([
+    "account",
+  ]);
 
   // 섹션 토글 함수
   const toggleSection = (section: SectionType) => {
     if (expandedSections.includes(section)) {
-      setExpandedSections(expandedSections.filter((s) => s !== section))
+      setExpandedSections(expandedSections.filter((s) => s !== section));
     } else {
-      setExpandedSections([...expandedSections, section])
+      setExpandedSections([...expandedSections, section]);
     }
-  }
+  };
 
   // 섹션이 확장되었는지 확인하는 함수
   const isSectionExpanded = (section: SectionType) => {
-    return expandedSections.includes(section)
-  }
+    return expandedSections.includes(section);
+  };
 
   // 샘플 데이터
   const voiceModels = [
     { id: 1, name: "판타지 내레이터", status: "완료", favorite: true },
     { id: 2, name: "우주 함선 AI", status: "완료", favorite: false },
     { id: 3, name: "호러 게임 마스터", status: "처리중", favorite: false },
-  ]
+  ];
 
   const generatedImages = [
     {
@@ -102,7 +112,7 @@ export default function ProfilePage() {
       url: "https://images.unsplash.com/photo-1614728263952-84ea256f9679?q=80&w=320&h=200&fit=crop",
       favorite: false,
     },
-  ]
+  ];
 
   const characterProfiles = [
     {
@@ -112,7 +122,7 @@ export default function ProfilePage() {
       class: "마법사",
       level: 5,
       favorite: true,
-      avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?q=80&w=40&h=40&fit=crop",
+      avatar: "imgages/",
     },
     {
       id: 2,
@@ -121,7 +131,7 @@ export default function ProfilePage() {
       class: "전사",
       level: 7,
       favorite: false,
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=40&h=40&fit=crop",
+      avatar: "images/dwarf.png",
     },
     {
       id: 3,
@@ -130,9 +140,10 @@ export default function ProfilePage() {
       class: "도적",
       level: 4,
       favorite: false,
-      avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=40&h=40&fit=crop",
+      avatar:
+        "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=40&h=40&fit=crop",
     },
-  ]
+  ];
 
   const storyTemplates = [
     {
@@ -156,7 +167,7 @@ export default function ProfilePage() {
       players: "3-6명",
       favorite: false,
     },
-  ]
+  ];
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -166,7 +177,7 @@ export default function ProfilePage() {
           <h1 className="text-3xl font-bold">내 프로필</h1>
           <UserNav />
         </div>
-
+        
         <div className="max-w-4xl mx-auto space-y-6">
           {/* 계정 정보 섹션 */}
           <Card>
@@ -178,7 +189,11 @@ export default function ProfilePage() {
                 <Settings className="h-5 w-5" />
                 <CardTitle>계정 정보</CardTitle>
               </div>
-              {isSectionExpanded("account") ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+              {isSectionExpanded("account") ? (
+                <ChevronUp className="h-5 w-5" />
+              ) : (
+                <ChevronDown className="h-5 w-5" />
+              )}
             </CardHeader>
 
             {isSectionExpanded("account") && (
@@ -193,7 +208,11 @@ export default function ProfilePage() {
                         />
                         <AvatarFallback>P1</AvatarFallback>
                       </Avatar>
-                      <Button size="icon" className="absolute bottom-0 right-0 rounded-full" variant="secondary">
+                      <Button
+                        size="icon"
+                        className="absolute bottom-0 right-0 rounded-full"
+                        variant="secondary"
+                      >
                         <Camera className="h-4 w-4" />
                       </Button>
                     </div>
@@ -203,7 +222,11 @@ export default function ProfilePage() {
                   <div className="grid gap-4">
                     <div className="grid gap-2">
                       <Label htmlFor="username">닉네임</Label>
-                      <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} />
+                      <Input
+                        id="username"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                      />
                     </div>
 
                     <div className="grid gap-2">
@@ -215,7 +238,12 @@ export default function ProfilePage() {
                   <div className="space-y-4">
                     <div className="grid gap-2">
                       <Label htmlFor="email">이메일 주소</Label>
-                      <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                      <Input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
                     </div>
 
                     <div className="grid gap-2">
@@ -256,9 +284,12 @@ export default function ProfilePage() {
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>정말 탈퇴하시겠습니까?</AlertDialogTitle>
+                        <AlertDialogTitle>
+                          정말 탈퇴하시겠습니까?
+                        </AlertDialogTitle>
                         <AlertDialogDescription>
-                          계정을 삭제하면 모든 데이터가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+                          계정을 삭제하면 모든 데이터가 영구적으로 삭제됩니다.
+                          이 작업은 되돌릴 수 없습니다.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -289,17 +320,26 @@ export default function ProfilePage() {
                 <Volume2 className="h-5 w-5" />
                 <CardTitle>음성 모델 관리</CardTitle>
               </div>
-              {isSectionExpanded("voice") ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+              {isSectionExpanded("voice") ? (
+                <ChevronUp className="h-5 w-5" />
+              ) : (
+                <ChevronDown className="h-5 w-5" />
+              )}
             </CardHeader>
 
             {isSectionExpanded("voice") && (
               <>
                 <CardContent>
-                  <CardDescription className="mb-4">생성한 음성 모델을 관리하고 테스트할 수 있습니다.</CardDescription>
+                  <CardDescription className="mb-4">
+                    생성한 음성 모델을 관리하고 테스트할 수 있습니다.
+                  </CardDescription>
                   <ScrollArea className="h-[400px]">
                     <div className="space-y-4">
                       {voiceModels.map((model) => (
-                        <div key={model.id} className="flex items-center justify-between border p-4 rounded-lg">
+                        <div
+                          key={model.id}
+                          className="flex items-center justify-between border p-4 rounded-lg"
+                        >
                           <div className="flex items-center gap-3">
                             <Avatar>
                               <AvatarFallback
@@ -307,8 +347,8 @@ export default function ProfilePage() {
                                   model.id === 1
                                     ? "bg-blue-100 text-blue-600"
                                     : model.id === 2
-                                      ? "bg-green-100 text-green-600"
-                                      : "bg-red-100 text-red-600",
+                                    ? "bg-green-100 text-green-600"
+                                    : "bg-red-100 text-red-600"
                                 )}
                               >
                                 <Volume2 className="h-4 w-4" />
@@ -316,14 +356,25 @@ export default function ProfilePage() {
                             </Avatar>
                             <div>
                               <p className="font-medium">{model.name}</p>
-                              <Badge variant={model.status === "완료" ? "outline" : "secondary"}>{model.status}</Badge>
+                              <Badge
+                                variant={
+                                  model.status === "완료"
+                                    ? "outline"
+                                    : "secondary"
+                                }
+                              >
+                                {model.status}
+                              </Badge>
                             </div>
                           </div>
                           <div className="flex gap-2">
                             <Button size="sm" variant="outline">
                               테스트
                             </Button>
-                            <Button size="icon" variant={model.favorite ? "default" : "outline"}>
+                            <Button
+                              size="icon"
+                              variant={model.favorite ? "default" : "outline"}
+                            >
                               <Star className="h-4 w-4" />
                             </Button>
                             <Button size="icon" variant="outline">
@@ -352,7 +403,11 @@ export default function ProfilePage() {
                 <ImageIcon className="h-5 w-5" />
                 <CardTitle>이미지 관리</CardTitle>
               </div>
-              {isSectionExpanded("images") ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+              {isSectionExpanded("images") ? (
+                <ChevronUp className="h-5 w-5" />
+              ) : (
+                <ChevronDown className="h-5 w-5" />
+              )}
             </CardHeader>
 
             {isSectionExpanded("images") && (
@@ -364,7 +419,10 @@ export default function ProfilePage() {
                   <ScrollArea className="h-[500px]">
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                       {generatedImages.map((image) => (
-                        <div key={image.id} className="border rounded-lg overflow-hidden">
+                        <div
+                          key={image.id}
+                          className="border rounded-lg overflow-hidden"
+                        >
                           <div className="relative">
                             <img
                               src={image.url || "/placeholder.svg"}
@@ -423,11 +481,19 @@ export default function ProfilePage() {
                   <ScrollArea className="h-[400px]">
                     <div className="space-y-4">
                       {characterProfiles.map((character) => (
-                        <div key={character.id} className="flex items-center justify-between border p-4 rounded-lg">
+                        <div
+                          key={character.id}
+                          className="flex items-center justify-between border p-4 rounded-lg"
+                        >
                           <div className="flex items-center gap-3">
                             <Avatar>
-                              <AvatarImage src={character.avatar || "/placeholder.svg"} alt={character.name} />
-                              <AvatarFallback>{character.name.charAt(0)}</AvatarFallback>
+                              <AvatarImage
+                                src={character.avatar || "/placeholder.svg"}
+                                alt={character.name}
+                              />
+                              <AvatarFallback>
+                                {character.name.charAt(0)}
+                              </AvatarFallback>
                             </Avatar>
                             <div>
                               <p className="font-medium">{character.name}</p>
@@ -450,26 +516,41 @@ export default function ProfilePage() {
                               <DialogContent>
                                 <DialogHeader>
                                   <DialogTitle>캐릭터 수정</DialogTitle>
-                                  <DialogDescription>캐릭터 정보를 수정합니다.</DialogDescription>
+                                  <DialogDescription>
+                                    캐릭터 정보를 수정합니다.
+                                  </DialogDescription>
                                 </DialogHeader>
                                 <div className="grid gap-4 py-4">
                                   <div className="grid gap-2">
                                     <Label htmlFor="edit-name">이름</Label>
-                                    <Input id="edit-name" defaultValue={character.name} />
+                                    <Input
+                                      id="edit-name"
+                                      defaultValue={character.name}
+                                    />
                                   </div>
                                   <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
                                       <Label htmlFor="edit-race">종족</Label>
-                                      <Input id="edit-race" defaultValue={character.race} />
+                                      <Input
+                                        id="edit-race"
+                                        defaultValue={character.race}
+                                      />
                                     </div>
                                     <div className="grid gap-2">
                                       <Label htmlFor="edit-class">직업</Label>
-                                      <Input id="edit-class" defaultValue={character.class} />
+                                      <Input
+                                        id="edit-class"
+                                        defaultValue={character.class}
+                                      />
                                     </div>
                                   </div>
                                   <div className="grid gap-2">
                                     <Label htmlFor="edit-level">레벨</Label>
-                                    <Input id="edit-level" type="number" defaultValue={character.level} />
+                                    <Input
+                                      id="edit-level"
+                                      type="number"
+                                      defaultValue={character.level}
+                                    />
                                   </div>
                                 </div>
                                 <DialogFooter>
@@ -480,7 +561,12 @@ export default function ProfilePage() {
                                 </DialogFooter>
                               </DialogContent>
                             </Dialog>
-                            <Button size="icon" variant={character.favorite ? "default" : "outline"}>
+                            <Button
+                              size="icon"
+                              variant={
+                                character.favorite ? "default" : "outline"
+                              }
+                            >
                               <Star className="h-4 w-4" />
                             </Button>
                             <Button size="icon" variant="outline">
@@ -509,7 +595,11 @@ export default function ProfilePage() {
                 <FileText className="h-5 w-5" />
                 <CardTitle>스토리 템플릿 관리</CardTitle>
               </div>
-              {isSectionExpanded("templates") ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+              {isSectionExpanded("templates") ? (
+                <ChevronUp className="h-5 w-5" />
+              ) : (
+                <ChevronDown className="h-5 w-5" />
+              )}
             </CardHeader>
 
             {isSectionExpanded("templates") && (
@@ -521,7 +611,10 @@ export default function ProfilePage() {
                   <ScrollArea className="h-[400px]">
                     <div className="space-y-4">
                       {storyTemplates.map((template) => (
-                        <div key={template.id} className="flex items-center justify-between border p-4 rounded-lg">
+                        <div
+                          key={template.id}
+                          className="flex items-center justify-between border p-4 rounded-lg"
+                        >
                           <div>
                             <p className="font-medium">{template.title}</p>
                             <div className="flex gap-2 text-sm text-muted-foreground">
@@ -540,26 +633,44 @@ export default function ProfilePage() {
                               <DialogContent>
                                 <DialogHeader>
                                   <DialogTitle>템플릿 수정</DialogTitle>
-                                  <DialogDescription>스토리 템플릿 정보를 수정합니다.</DialogDescription>
+                                  <DialogDescription>
+                                    스토리 템플릿 정보를 수정합니다.
+                                  </DialogDescription>
                                 </DialogHeader>
                                 <div className="grid gap-4 py-4">
                                   <div className="grid gap-2">
                                     <Label htmlFor="edit-title">제목</Label>
-                                    <Input id="edit-title" defaultValue={template.title} />
+                                    <Input
+                                      id="edit-title"
+                                      defaultValue={template.title}
+                                    />
                                   </div>
                                   <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
                                       <Label htmlFor="edit-genre">장르</Label>
-                                      <Input id="edit-genre" defaultValue={template.genre} />
+                                      <Input
+                                        id="edit-genre"
+                                        defaultValue={template.genre}
+                                      />
                                     </div>
                                     <div className="grid gap-2">
-                                      <Label htmlFor="edit-players">플레이어</Label>
-                                      <Input id="edit-players" defaultValue={template.players} />
+                                      <Label htmlFor="edit-players">
+                                        플레이어
+                                      </Label>
+                                      <Input
+                                        id="edit-players"
+                                        defaultValue={template.players}
+                                      />
                                     </div>
                                   </div>
                                   <div className="grid gap-2">
-                                    <Label htmlFor="edit-description">설명</Label>
-                                    <Input id="edit-description" placeholder="템플릿 설명을 입력하세요" />
+                                    <Label htmlFor="edit-description">
+                                      설명
+                                    </Label>
+                                    <Input
+                                      id="edit-description"
+                                      placeholder="템플릿 설명을 입력하세요"
+                                    />
                                   </div>
                                 </div>
                                 <DialogFooter>
@@ -570,7 +681,12 @@ export default function ProfilePage() {
                                 </DialogFooter>
                               </DialogContent>
                             </Dialog>
-                            <Button size="icon" variant={template.favorite ? "default" : "outline"}>
+                            <Button
+                              size="icon"
+                              variant={
+                                template.favorite ? "default" : "outline"
+                              }
+                            >
                               <Star className="h-4 w-4" />
                             </Button>
                             <Button size="icon" variant="outline">
@@ -591,6 +707,6 @@ export default function ProfilePage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
-3
+

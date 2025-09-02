@@ -1,3 +1,4 @@
+// UI 텍스트에어리어 - 멀티라인 텍스트 입력
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

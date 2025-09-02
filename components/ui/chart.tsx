@@ -1,3 +1,4 @@
+// UI 차트 - 데이터 시각화 컴포넌트 래퍼
 "use client"
 
 import * as React from "react"

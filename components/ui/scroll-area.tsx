@@ -1,3 +1,4 @@
+// UI 스크롤 영역 - 커스텀 스크롤 컨테이너
 "use client"
 
 import * as React from "react"

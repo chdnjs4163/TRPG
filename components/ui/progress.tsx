@@ -1,3 +1,4 @@
+// UI 진행바 - 완료 퍼센트 시각화
 "use client"
 
 import * as React from "react"

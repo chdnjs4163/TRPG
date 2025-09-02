@@ -1,3 +1,4 @@
+// 채팅 메시지 - 보낸이/내용/타임스탬프 표시 UI
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 

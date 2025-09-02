@@ -1,3 +1,4 @@
+// UI 라디오 그룹 - 단일 선택 입력
 "use client"
 
 import * as React from "react"

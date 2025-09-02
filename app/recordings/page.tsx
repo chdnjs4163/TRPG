@@ -1,3 +1,4 @@
+// 녹화 기록 페이지 - 게임 녹화 파일 업로드/목록/재생
 "use client"
 
 import type React from "react"

@@ -1,4 +1,5 @@
-"use client"
+// 회원가입 페이지 - 계정 생성 폼 및 소셜 가입 버튼
+"use client" 
 
 import type React from "react"
 

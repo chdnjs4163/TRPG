@@ -1,3 +1,4 @@
+// TRPG 가이드 페이지 - TRPG 기본 개념과 규칙 안내
 import { MainNavigation } from "@/components/main-navigation"
 import { UserNav } from "@/components/user-nav"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -67,16 +68,7 @@ export default function TRPGGuidePage() {
               </Card>
               
               <Card>
-                <CardHeader>
-                  <CardTitle>TRPG의 역사</CardTitle>
-                  <CardDescription>테이블탑 롤플레잉 게임의 발전 과정</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p>
-                    TRPG는 1974년 게리 가이각스(Gary Gygax)와 데이브 아네슨(Dave Arneson)이 만든 던전스 앤 드래곤스(Dungeons & Dragons)에서 시작되었습니다.
-                    이후 다양한 장르와 규칙 시스템을 가진 TRPG가 개발되었으며, 오늘날에는 온라인 플랫폼을 통해 더 많은 사람들이 즐길 수 있게 되었습니다.
-                  </p>
-                </CardContent>
+                    
               </Card>
             </TabsContent>
             

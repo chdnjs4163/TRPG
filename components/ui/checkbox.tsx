@@ -1,3 +1,4 @@
+// UI 체크박스 - 다중 선택 입력
 "use client"
 
 import * as React from "react"

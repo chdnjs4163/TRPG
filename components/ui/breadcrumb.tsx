@@ -1,3 +1,4 @@
+// UI 브레드크럼 - 경로 네비게이션 표시
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { ChevronRight, MoreHorizontal } from "lucide-react"

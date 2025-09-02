@@ -1,3 +1,4 @@
+// 게임 사이드바 - 플레이어/맵/인벤토리 탭 UI
 "use client"
 
 import type React from "react"

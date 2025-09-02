@@ -1,3 +1,4 @@
+// UI 스위치 - 토글 입력 컴포넌트
 "use client"
 
 import * as React from "react"

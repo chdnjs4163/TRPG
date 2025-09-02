@@ -1,3 +1,4 @@
+// 유저 네비게이션 - 아바타/메뉴/계정 액션
 "use client"
 
 import Link from "next/link"

@@ -1,3 +1,4 @@
+// 주사위 롤러 - 다양한 면체 주사위 굴림 기능
 "use client"
 
 import { useState } from "react"

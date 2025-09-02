@@ -1,3 +1,4 @@
+// UI 아바타 - 사용자 이미지/이니셜 표시
 "use client"
 
 import * as React from "react"

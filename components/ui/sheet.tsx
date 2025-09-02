@@ -1,3 +1,4 @@
+// UI 시트 - 측면에서 나타나는 오버레이 패널
 "use client"
 
 import * as React from "react"

@@ -1,3 +1,4 @@
+// AI 채팅 위젯 - 게임 내 AI GM과의 대화 인터페이스
 // 파일 경로: app/game/[id]/AiChat.tsx , 테스트용 (대화기록만 주고받고 단순히 채팅)
 'use client';
 

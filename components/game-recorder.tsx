@@ -1,3 +1,4 @@
+// 게임 녹화 컴포넌트 - 이벤트 기록/내보내기
 "use client"
 
 import { useState, useEffect, useRef } from "react"

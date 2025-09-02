@@ -1,3 +1,4 @@
+// UI 커맨드 팔레트 - 명령 검색/실행 UI
 "use client"
 
 import * as React from "react"

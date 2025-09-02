@@ -1,3 +1,4 @@
+// UI 캐러셀 - 슬라이드 형식 콘텐츠 표시
 "use client"
 
 import * as React from "react"

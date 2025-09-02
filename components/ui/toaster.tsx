@@ -1,3 +1,4 @@
+// UI 토스터 - 전역 토스트 컨테이너 마운트 포인트
 "use client"
 
 import { useToast } from "@/hooks/use-toast"

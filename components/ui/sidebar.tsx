@@ -1,3 +1,4 @@
+// UI 사이드바 - 네비/콘텐츠 사이드 레이아웃
 "use client"
 
 import * as React from "react"
