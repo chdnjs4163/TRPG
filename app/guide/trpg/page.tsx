@@ -3,7 +3,7 @@ import { MainNavigation } from "@/components/main-navigation"
 import { UserNav } from "@/components/user-nav"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dice5, Users, BookOpen, MessageSquare } from "lucide-react"
+import { Dice5, BookOpen } from "lucide-react"
 
 export default function TRPGGuidePage() {
   return (
@@ -17,7 +17,7 @@ export default function TRPGGuidePage() {
         
         <div className="max-w-4xl mx-auto">
           <Tabs defaultValue="basics">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="basics" className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
                 기본 개념
@@ -25,14 +25,6 @@ export default function TRPGGuidePage() {
               <TabsTrigger value="dice" className="flex items-center gap-2">
                 <Dice5 className="h-4 w-4" />
                 주사위 시스템
-              </TabsTrigger>
-              <TabsTrigger value="characters" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                캐릭터 생성
-              </TabsTrigger>
-              <TabsTrigger value="gameplay" className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                게임 진행
               </TabsTrigger>
             </TabsList>
             

@@ -10,8 +10,9 @@ import {
   Users, 
   BookOpen, 
   MessageSquare, 
-  Video, 
+  
   Settings,
+
   User,
   Palette
 } from "lucide-react";
@@ -121,13 +122,7 @@ export default function WebsiteGuidePage() {
                     </div>
                     <div className="space-y-4">
                       <div className="flex items-start gap-3">
-                        <Video className="h-5 w-5 mt-1 text-red-600" />
-                        <div>
-                          <h4 className="font-medium">게임 녹화</h4>
-                          <p className="text-sm text-muted-foreground">
-                            게임 세션 녹화 및 재생 기능
-                          </p>
-                        </div>
+                        
                       </div>
                       <div className="flex items-start gap-3">
                         <Settings className="h-5 w-5 mt-1 text-orange-600" />

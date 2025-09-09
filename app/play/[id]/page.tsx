@@ -56,7 +56,7 @@ import {
   RepeatIcon as Record,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { GameRecorder } from "@/components/game-recorder"
+
 
 // --- 인터페이스 정의 ---
 interface Message {

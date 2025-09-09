@@ -1,4 +1,4 @@
-// 내 프로필 페이지 - 계정/음성/이미지/캐릭터/템플릿 관리
+//내 프로필" 페이지 - 사용자가 자신의 계정 정보를 보고, 편집하고, 관리할 수 있는 기능 제공
 "use client";
 
 import { useState } from "react";
@@ -170,8 +170,7 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <MainNavigation />
+
       <div className="flex-1 p-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">내 프로필</h1>
@@ -706,7 +705,6 @@ export default function ProfilePage() {
           </Card>
         </div>
       </div>
-    </div>
   );
 }
 

@@ -116,7 +116,7 @@ export default function DashboardPage() {
 
   const adventureGames = [
     { id: 1, title: "잃어버린 보물", date: "2023-05-18", image: "/images/adventure-game.png" },
-    { id: 2, title: "정글 탐험", date: "2023-05-11", image: "/images/adventure-game.png" },
+    { id: 2, title: "고대 던전 탐험", date: "2023-05-11", image: "/images/adventure-game.png" },
     { id: 3, title: "해적선", date: "2023-05-04", image: "/images/adventure-game.png" },
   ]
 
@@ -325,12 +325,7 @@ export default function DashboardPage() {
                   <AiChatbot />
                 </CardContent>
               </Card>
-            </section>
-
-            <Button variant="outline" onClick={() => router.push("/recordings")} className="flex items-center gap-2">
-              <Video className="h-4 w-4" />
-              <span>게임 녹화 기록</span>
-            </Button>
+            </section>          
           </>
         )
       case "최근 플레이":
