@@ -1,5 +1,3 @@
-// 사용자 인증 관련 라우터 (회원가입, 로그인, 비밀번호 변경, 이메일 인증 등)
-
 const express = require("express"); // Express 모듈 불러오기
 const bcrypt = require("bcrypt"); // 비밀번호 해싱 모듈
 const jwt = require("jsonwebtoken"); // JWT 생성/검증 모듈
