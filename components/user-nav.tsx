@@ -1,4 +1,4 @@
-// 유저 네비게이션 - 아바타/메뉴/계정 액션
+// 유저 네비게이션 - 프로필,플레이어 기록, 설정 등 수정하는 페이지
 "use client"
 
 import Link from "next/link"
@@ -42,7 +42,7 @@ export function UserNav() {
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <Link href="/history" className="flex w-full cursor-pointer">
+            <Link href="/recent" className="flex w-full cursor-pointer">
               <History className="mr-2 h-4 w-4" />
               <span>플레이 기록</span>
             </Link>

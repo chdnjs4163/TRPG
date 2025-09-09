@@ -9,18 +9,14 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
+import { GameInfo } from "@/components/game-info";
+import { gamesByGenre } from "@/lib/catalog";
 
 export default function SciFiCategoryPage() {
   const [currentPage, setCurrentPage] = useState(0);
+  const [selectedGame, setSelectedGame] = useState<any>(null);
   const ITEMS_PER_PAGE = 6;
-
-  const scifiGames = [
-    { id: 1, title: "우주 정거장", date: "2023-05-12", image: "/images/space_adventure.png" },
-    { id: 2, title: "외계 행성", date: "2023-05-07", image: "/images/planet.png" },
-    { id: 3, title: "사이버 도시", date: "2023-04-30", image: "/images/cyber-city.png" },
-    { id: 4, title: "외계인 침공", date: "2023-04-20", image: "/images/alien_invasion.png" },
-    { id: 5, title: "핑크 시티", date: "2023-04-15", image: "/images/Pink_City.png" },
-  ];
+  const scifiGames = gamesByGenre["SF"];
 
   const changePage = (direction: "prev" | "next") => {
     const maxPage = Math.ceil(scifiGames.length / ITEMS_PER_PAGE) - 1;
@@ -34,6 +30,20 @@ export default function SciFiCategoryPage() {
   const getCurrentPageItems = () => {
     const startIndex = currentPage * ITEMS_PER_PAGE;
     return scifiGames.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  };
+
+  const handleGameClick = (game: any) => {
+    setSelectedGame({
+      id: Date.now(),
+      title: game.title,
+      description: game.description,
+      image: game.image,
+      genre: game.genre,
+    });
+  };
+
+  const handleBack = () => {
+    setSelectedGame(null);
   };
 
   return (
@@ -73,24 +83,26 @@ export default function SciFiCategoryPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {getCurrentPageItems().map((game) => (
-              <Link href={`/game/${game.id}`} key={game.id} className="block">
-                <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                  <CardHeader className="p-0">
-                    <div className="relative w-full h-48">
-                      <Image
-                        src={game.image || "/placeholder.svg"}
-                        alt={game.title}
-                        fill
-                        className="object-cover rounded-t-lg"
-                      />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-4">
-                    <CardTitle className="text-lg">{game.title}</CardTitle>
-                    <CardDescription>마지막 플레이: {game.date}</CardDescription>
-                  </CardContent>
-                </Card>
-              </Link>
+              <Card 
+                key={game.title} 
+                className="h-full hover:bg-accent/50 transition-colors cursor-pointer"
+                onClick={() => handleGameClick(game)}
+              >
+                <CardHeader className="p-0">
+                  <div className="relative w-full h-48">
+                    <Image
+                      src={game.image || "/placeholder.svg"}
+                      alt={game.title}
+                      fill
+                      className="object-cover rounded-t-lg"
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4">
+                  <CardTitle className="text-lg">{game.title}</CardTitle>
+                  <CardDescription>{game.description}</CardDescription>
+                </CardContent>
+              </Card>
             ))}
           </div>
 
@@ -123,6 +135,15 @@ export default function SciFiCategoryPage() {
           </div>
         </div>
       </div>
+
+      {/* 게임 정보 모달 */}
+      {selectedGame && (
+        <GameInfo
+          gameInfo={selectedGame}
+          onStartGame={() => window.location.href = `/templates?title=${encodeURIComponent(selectedGame.title)}`}
+          onBack={handleBack}
+        />
+      )}
     </div>
   );
 } 

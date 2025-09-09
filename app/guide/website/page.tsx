@@ -63,10 +63,10 @@ export default function WebsiteGuidePage() {
                     <div>
                       <h4 className="font-medium mb-2">플랫폼의 장점</h4>
                       <ul className="list-disc pl-6 space-y-1">
-                        <li>언제 어디서나 게임 참여 가능</li>
+                        <li>AI와 즐겁게 솔로플레이 가능</li>
                         <li>AI 게임 마스터 지원</li>
                         <li>다양한 게임 템플릿 제공</li>
-                        <li>실시간 채팅 및 음성 지원</li>
+                        <li>선택에 따라 실시간으로 변하는 스토리</li>
                       </ul>
                     </div>
                     <div>
@@ -201,15 +201,14 @@ export default function WebsiteGuidePage() {
                         <li>게임 템플릿을 미리 확인하세요</li>
                         <li>캐릭터를 미리 생성해두세요</li>
                         <li>게임 규칙을 숙지하세요</li>
-                        <li>음성 설정을 확인하세요</li>
+
                       </ul>
                     </div>
                     <div>
                       <h4 className="font-medium mb-2">게임 진행 중</h4>
                       <ul className="list-disc pl-6 space-y-1">
                         <li>AI 게임 마스터를 적극 활용하세요</li>
-                        <li>게임을 녹화하여 나중에 참고하세요</li>
-                        <li>다른 플레이어와 적극적으로 소통하세요</li>
+                        <li>AI 게임 마스터와 적극적으로 소통하세요</li>
                         <li>규칙에 대해 질문이 있으면 언제든 물어보세요</li>
                       </ul>
                     </div>

@@ -174,6 +174,52 @@ export default function GamePage({ params }: { params: { id: string } }) {
       try {
         setIsLoading(true);
         const templateTitle = searchParams.get("title") || "기본 던전";
+        const characterParam = searchParams.get("character");
+        
+        // 캐릭터 정보가 있으면 플레이어 목록에 추가
+        if (characterParam) {
+          try {
+            const character = JSON.parse(decodeURIComponent(characterParam));
+            const newPlayer: Player = {
+              id: Date.now(),
+              name: character.name,
+              role: character.class,
+              avatar: character.avatar,
+              health: 100,
+              maxHealth: 100,
+              mana: character.class === "mage" ? 100 : undefined,
+              maxMana: character.class === "mage" ? 100 : undefined,
+              status: [],
+              inventory: [],
+              equipment: {},
+              stats: {
+                strength: character.class === "warrior" ? 18 : 10,
+                dexterity: character.class === "archer" ? 18 : 10,
+                intelligence: character.class === "mage" ? 18 : 10,
+                constitution: 16,
+              },
+              level: 1,
+              experience: 0,
+            };
+            setPlayers(prev => [...prev.filter(p => p.role !== "게임 마스터"), newPlayer, {
+              id: Date.now() + 1,
+              name: "GM",
+              role: "게임 마스터",
+              avatar: "/images/gamemaster.png",
+              health: 100,
+              maxHealth: 100,
+              status: [],
+              inventory: [],
+              equipment: {},
+              stats: { strength: 0, dexterity: 0, intelligence: 0, constitution: 0 },
+              level: 0,
+              experience: 0,
+            }]);
+          } catch (error) {
+            console.error("캐릭터 정보 파싱 실패:", error);
+          }
+        }
+        
         const urlWithCacheBusting = `${FLASK_AI_SERVICE_URL}/api/ai/generate-scenario?timestamp=${Date.now()}`;
 
         const response = await axios.post(urlWithCacheBusting, {

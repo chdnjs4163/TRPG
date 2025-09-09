@@ -312,7 +312,7 @@ export default function DashboardPage() {
               </Card>
             </section>
 
-            {/* AI 채팅 섹션 */}
+            {/* AI 채팅 섹션  백엔드 서버와 연동해서 하기*/}
             <section className="mt-10">
               <Card>
                 <CardHeader>

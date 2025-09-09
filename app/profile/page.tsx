@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Character } from "@/components/Character";
 import {
   Card,
   CardContent,
@@ -29,18 +30,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -78,105 +68,19 @@ export default function ProfilePage() {
   // 섹션이 확장되었는지 확인하는 함수
   const isSectionExpanded = (section: SectionType) => {
     return expandedSections.includes(section);
+
+
   };
-
-  // 샘플 데이터
-  const voiceModels = [
-    { id: 1, name: "판타지 내레이터", status: "완료", favorite: true },
-    { id: 2, name: "우주 함선 AI", status: "완료", favorite: false },
-    { id: 3, name: "호러 게임 마스터", status: "처리중", favorite: false },
-  ];
-
-  const generatedImages = [
-    {
-      id: 1,
-      name: "용 일러스트",
-      url: "https://images.unsplash.com/photo-1577493340887-b7bfff550145?q=80&w=320&h=200&fit=crop",
-      favorite: true,
-    },
-    {
-      id: 2,
-      name: "우주 배경",
-      url: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?q=80&w=320&h=200&fit=crop",
-      favorite: true,
-    },
-    {
-      id: 3,
-      name: "던전 입구",
-      url: "https://images.unsplash.com/photo-1604537529428-15bcbeecfe4d?q=80&w=320&h=200&fit=crop",
-      favorite: false,
-    },
-    {
-      id: 4,
-      name: "마법사 캐릭터",
-      url: "https://images.unsplash.com/photo-1614728263952-84ea256f9679?q=80&w=320&h=200&fit=crop",
-      favorite: false,
-    },
-  ];
-
-  const characterProfiles = [
-    {
-      id: 1,
-      name: "엘프 마법사",
-      race: "엘프",
-      class: "마법사",
-      level: 5,
-      favorite: true,
-      avatar: "imgages/",
-    },
-    {
-      id: 2,
-      name: "드워프 전사",
-      race: "드워프",
-      class: "전사",
-      level: 7,
-      favorite: false,
-      avatar: "images/dwarf.png",
-    },
-    {
-      id: 3,
-      name: "인간 도적",
-      race: "인간",
-      class: "도적",
-      level: 4,
-      favorite: false,
-      avatar:
-        "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=40&h=40&fit=crop",
-    },
-  ];
-
-  const storyTemplates = [
-    {
-      id: 1,
-      title: "잃어버린 보물 찾기",
-      genre: "판타지",
-      players: "3-5명",
-      favorite: true,
-    },
-    {
-      id: 2,
-      title: "우주 정거장의 비밀",
-      genre: "SF",
-      players: "2-4명",
-      favorite: false,
-    },
-    {
-      id: 3,
-      title: "저주받은 마을",
-      genre: "호러",
-      players: "3-6명",
-      favorite: false,
-    },
-  ];
 
   return (
 
       <div className="flex-1 p-8">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">내 프로필</h1>
-          <UserNav />
-        </div>
-        
+  <div className="flex justify-center items-center mb-6 relative">
+    <h1 className="text-3xl font-bold">프로필</h1>
+    <div className="absolute right-0">
+      <UserNav />
+    </div>
+  </div>    
         <div className="max-w-4xl mx-auto space-y-6">
           {/* 계정 정보 섹션 */}
           <Card>
@@ -308,403 +212,284 @@ export default function ProfilePage() {
               </>
             )}
           </Card>
-
-          {/* 음성 모델 섹션 */}
-          <Card>
-            <CardHeader
-              className="cursor-pointer flex flex-row items-center justify-between"
-              onClick={() => toggleSection("voice")}
-            >
-              <div className="flex items-center gap-2">
-                <Volume2 className="h-5 w-5" />
-                <CardTitle>음성 모델 관리</CardTitle>
-              </div>
-              {isSectionExpanded("voice") ? (
-                <ChevronUp className="h-5 w-5" />
-              ) : (
-                <ChevronDown className="h-5 w-5" />
-              )}
-            </CardHeader>
-
-            {isSectionExpanded("voice") && (
-              <>
-                <CardContent>
-                  <CardDescription className="mb-4">
-                    생성한 음성 모델을 관리하고 테스트할 수 있습니다.
-                  </CardDescription>
-                  <ScrollArea className="h-[400px]">
-                    <div className="space-y-4">
-                      {voiceModels.map((model) => (
-                        <div
-                          key={model.id}
-                          className="flex items-center justify-between border p-4 rounded-lg"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Avatar>
-                              <AvatarFallback
-                                className={cn(
-                                  model.id === 1
-                                    ? "bg-blue-100 text-blue-600"
-                                    : model.id === 2
-                                    ? "bg-green-100 text-green-600"
-                                    : "bg-red-100 text-red-600"
-                                )}
-                              >
-                                <Volume2 className="h-4 w-4" />
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium">{model.name}</p>
-                              <Badge
-                                variant={
-                                  model.status === "완료"
-                                    ? "outline"
-                                    : "secondary"
-                                }
-                              >
-                                {model.status}
-                              </Badge>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline">
-                              테스트
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant={model.favorite ? "default" : "outline"}
-                            >
-                              <Star className="h-4 w-4" />
-                            </Button>
-                            <Button size="icon" variant="outline">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-                <CardFooter>
-                  <Button className="ml-auto">새 음성 모델 생성</Button>
-                </CardFooter>
-              </>
-            )}
-          </Card>
-
-          {/* 이미지 섹션 */}
-          <Card>
-            <CardHeader
-              className="cursor-pointer flex flex-row items-center justify-between"
-              onClick={() => toggleSection("images")}
-            >
-              <div className="flex items-center gap-2">
-                <ImageIcon className="h-5 w-5" />
-                <CardTitle>이미지 관리</CardTitle>
-              </div>
-              {isSectionExpanded("images") ? (
-                <ChevronUp className="h-5 w-5" />
-              ) : (
-                <ChevronDown className="h-5 w-5" />
-              )}
-            </CardHeader>
-
-            {isSectionExpanded("images") && (
-              <>
-                <CardContent>
-                  <CardDescription className="mb-4">
-                    생성한 이미지를 관리하고 즐겨찾기에 추가할 수 있습니다.
-                  </CardDescription>
-                  <ScrollArea className="h-[500px]">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                      {generatedImages.map((image) => (
-                        <div
-                          key={image.id}
-                          className="border rounded-lg overflow-hidden"
-                        >
-                          <div className="relative">
-                            <img
-                              src={image.url || "/placeholder.svg"}
-                              alt={image.name}
-                              className="w-full h-40 object-cover"
-                            />
-                            <Button
-                              size="icon"
-                              variant={image.favorite ? "default" : "outline"}
-                              className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm"
-                            >
-                              <Star className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <div className="p-3 flex justify-between items-center">
-                            <p className="font-medium text-sm">{image.name}</p>
-                            <Button size="icon" variant="outline">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-                <CardFooter>
-                  <Button className="ml-auto">새 이미지 생성</Button>
-                </CardFooter>
-              </>
-            )}
-          </Card>
-
-          {/* 캐릭터 프로필 섹션 */}
-          <Card>
-            <CardHeader
-              className="cursor-pointer flex flex-row items-center justify-between"
-              onClick={() => toggleSection("characters")}
-            >
-              <div className="flex items-center gap-2">
-                <UserCircle className="h-5 w-5" />
-                <CardTitle>캐릭터 프로필 관리</CardTitle>
-              </div>
-              {isSectionExpanded("characters") ? (
-                <ChevronUp className="h-5 w-5" />
-              ) : (
-                <ChevronDown className="h-5 w-5" />
-              )}
-            </CardHeader>
-
-            {isSectionExpanded("characters") && (
-              <>
-                <CardContent>
-                  <CardDescription className="mb-4">
-                    생성한 캐릭터 프로필을 관리하고 수정할 수 있습니다.
-                  </CardDescription>
-                  <ScrollArea className="h-[400px]">
-                    <div className="space-y-4">
-                      {characterProfiles.map((character) => (
-                        <div
-                          key={character.id}
-                          className="flex items-center justify-between border p-4 rounded-lg"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Avatar>
-                              <AvatarImage
-                                src={character.avatar || "/placeholder.svg"}
-                                alt={character.name}
-                              />
-                              <AvatarFallback>
-                                {character.name.charAt(0)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium">{character.name}</p>
-                              <div className="flex gap-2 text-sm text-muted-foreground">
-                                <span>{character.race}</span>
-                                <span>•</span>
-                                <span>{character.class}</span>
-                                <span>•</span>
-                                <span>레벨 {character.level}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button size="sm" variant="outline">
-                                  수정
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>캐릭터 수정</DialogTitle>
-                                  <DialogDescription>
-                                    캐릭터 정보를 수정합니다.
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                  <div className="grid gap-2">
-                                    <Label htmlFor="edit-name">이름</Label>
-                                    <Input
-                                      id="edit-name"
-                                      defaultValue={character.name}
-                                    />
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-race">종족</Label>
-                                      <Input
-                                        id="edit-race"
-                                        defaultValue={character.race}
-                                      />
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-class">직업</Label>
-                                      <Input
-                                        id="edit-class"
-                                        defaultValue={character.class}
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="grid gap-2">
-                                    <Label htmlFor="edit-level">레벨</Label>
-                                    <Input
-                                      id="edit-level"
-                                      type="number"
-                                      defaultValue={character.level}
-                                    />
-                                  </div>
-                                </div>
-                                <DialogFooter>
-                                  <DialogClose asChild>
-                                    <Button variant="outline">취소</Button>
-                                  </DialogClose>
-                                  <Button>저장</Button>
-                                </DialogFooter>
-                              </DialogContent>
-                            </Dialog>
-                            <Button
-                              size="icon"
-                              variant={
-                                character.favorite ? "default" : "outline"
-                              }
-                            >
-                              <Star className="h-4 w-4" />
-                            </Button>
-                            <Button size="icon" variant="outline">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-                <CardFooter>
-                  <Button className="ml-auto">새 캐릭터 생성</Button>
-                </CardFooter>
-              </>
-            )}
-          </Card>
-
-          {/* 스토리 템플릿 섹션 */}
-          <Card>
-            <CardHeader
-              className="cursor-pointer flex flex-row items-center justify-between"
-              onClick={() => toggleSection("templates")}
-            >
-              <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                <CardTitle>스토리 템플릿 관리</CardTitle>
-              </div>
-              {isSectionExpanded("templates") ? (
-                <ChevronUp className="h-5 w-5" />
-              ) : (
-                <ChevronDown className="h-5 w-5" />
-              )}
-            </CardHeader>
-
-            {isSectionExpanded("templates") && (
-              <>
-                <CardContent>
-                  <CardDescription className="mb-4">
-                    생성한 스토리 템플릿을 관리하고 수정할 수 있습니다.
-                  </CardDescription>
-                  <ScrollArea className="h-[400px]">
-                    <div className="space-y-4">
-                      {storyTemplates.map((template) => (
-                        <div
-                          key={template.id}
-                          className="flex items-center justify-between border p-4 rounded-lg"
-                        >
-                          <div>
-                            <p className="font-medium">{template.title}</p>
-                            <div className="flex gap-2 text-sm text-muted-foreground">
-                              <span>{template.genre}</span>
-                              <span>•</span>
-                              <span>{template.players}</span>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button size="sm" variant="outline">
-                                  수정
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>템플릿 수정</DialogTitle>
-                                  <DialogDescription>
-                                    스토리 템플릿 정보를 수정합니다.
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                  <div className="grid gap-2">
-                                    <Label htmlFor="edit-title">제목</Label>
-                                    <Input
-                                      id="edit-title"
-                                      defaultValue={template.title}
-                                    />
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-genre">장르</Label>
-                                      <Input
-                                        id="edit-genre"
-                                        defaultValue={template.genre}
-                                      />
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label htmlFor="edit-players">
-                                        플레이어
-                                      </Label>
-                                      <Input
-                                        id="edit-players"
-                                        defaultValue={template.players}
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="grid gap-2">
-                                    <Label htmlFor="edit-description">
-                                      설명
-                                    </Label>
-                                    <Input
-                                      id="edit-description"
-                                      placeholder="템플릿 설명을 입력하세요"
-                                    />
-                                  </div>
-                                </div>
-                                <DialogFooter>
-                                  <DialogClose asChild>
-                                    <Button variant="outline">취소</Button>
-                                  </DialogClose>
-                                  <Button>저장</Button>
-                                </DialogFooter>
-                              </DialogContent>
-                            </Dialog>
-                            <Button
-                              size="icon"
-                              variant={
-                                template.favorite ? "default" : "outline"
-                              }
-                            >
-                              <Star className="h-4 w-4" />
-                            </Button>
-                            <Button size="icon" variant="outline">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-                <CardFooter>
-                  <Button className="ml-auto">새 템플릿 생성</Button>
-                </CardFooter>
-              </>
-            )}
-          </Card>
+          <Character/>
         </div>
-      </div>
+    </div>
   );
 }
+         
+             
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+
+    
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+     
+     
+
 
