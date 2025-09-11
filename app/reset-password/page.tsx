@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import Link from "next/link";
 
+// 비밀번호 재설정 페이지 컴포넌트
+
 export default function ResetPasswordPage() {
     const [step, setStep] = useState(1);
     const [email, setEmail] = useState("");

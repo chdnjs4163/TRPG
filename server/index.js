@@ -1,3 +1,5 @@
+// 서버 설정 및 미들웨어 구성
+
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
