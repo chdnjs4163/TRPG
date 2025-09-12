@@ -1,5 +1,5 @@
 "use client"
-
+// dashboard/page.tsx
 import { useState, useEffect } from "react";
 import { MainNavigation } from "@/components/main-navigation";
 import { UserNav } from "@/components/user-nav";

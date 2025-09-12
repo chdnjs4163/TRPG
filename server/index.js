@@ -1,4 +1,4 @@
-// Description: Main server file for TRPG API with authentication and game route2
+// Description: Main server file for TRPG API with authentication and game routees
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
