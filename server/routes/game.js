@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-
+// 게임 타이틀 목록 조회
 router.get('/', async (req, res) => {  // <-- 여기 /game -> / 로 변경
     try {
         const { recent, template, theme, limit } = req.query;
