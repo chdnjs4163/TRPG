@@ -5,7 +5,7 @@ import { MainNavigation } from "@/components/main-navigation";
 import { UserNav } from "@/components/user-nav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Search, Filter, Calendar, Users, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, Filter } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
@@ -22,112 +22,60 @@ export default function RecentPage() {
     {
       id: 1,
       title: "던전 탐험",
-      date: "2023-04-20",
-      duration: "3시간 15분",
-      players: 4,
-      genre: "판타지",
+      genre: "모험",
       image: "/images/DungeonExploration.png",
-      status: "완료",
-      rating: 4.8,
+      description: "고대 던전을 누비며 몬스터와 보물을 마주하는 클래식 모험.",
     },
     {
       id: 2,
       title: "우주 모험",
-      date: "2023-04-15",
-      duration: "4시간 30분",
-      players: 3,
       genre: "SF",
       image: "/images/space_adventure.png",
-      status: "완료",
-      rating: 4.6,
+      description: "우주 정거장에서 벌어지는 사건을 해결하는 모험.",
     },
     {
       id: 3,
-      title: "판타지 왕국",
-      date: "2023-04-10",
-      duration: "5시간 45분",
-      players: 5,
+      title: "마법의 숲",
       genre: "판타지",
-      image: "/images/fantasy-kingdom.png",
-      status: "완료",
-      rating: 4.9,
+      image: "/images/magical_forest.png",
+      description: "신비로운 마법의 숲에서 펼쳐지는 모험.",
     },
     {
       id: 4,
       title: "사이버펑크 도시",
-      date: "2023-04-05",
-      duration: "2시간 50분",
-      players: 4,
       genre: "SF",
       image: "/images/cyber-city.png",
-      status: "완료",
-      rating: 4.5,
+      description: "네온이 빛나는 사이버 도시에서 벌어지는 잠입과 수사.",
     },
+    
     {
       id: 5,
-      title: "마법의 숲",
-      date: "2023-04-01",
-      duration: "3시간 20분",
-      players: 3,
-      genre: "판타지",
-      image: "/images/magical_forest.png",
-      status: "완료",
-      rating: 4.7,
+      title: "잃어버린 보물",
+      genre: "모험",
+      image: "/images/Pirate_Ship_Adventure.png",
+      description: "전설의 보물을 찾아 떠나는 항해.",
     },
     {
       id: 6,
-      title: "해적선 모험",
-      date: "2023-03-28",
-      duration: "4시간 10분",
-      players: 4,
-      genre: "모험",
-      image: "/images/Pirate_Ship_Adventure.png",
-      status: "완료",
-      rating: 4.4,
-    },
-    {
-      id: 7,
       title: "유령의 저택",
-      date: "2023-03-25",
-      duration: "2시간 30분",
-      players: 3,
       genre: "호러",
       image: "/images/got.png",
-      status: "완료",
-      rating: 4.6,
+      description: "저주받은 저택에서 벌어지는 공포의 이야기.",
+    },
+    
+    {
+      id: 7,
+      title: "드래곤 퀘스트",
+      genre: "판타지",
+      image: "/images/dragon-quest.png",
+      description: "전설의 드래곤을 찾아 떠나는 위대한 모험.",
     },
     {
       id: 8,
-      title: "외계 행성",
-      date: "2023-03-20",
-      duration: "3시간 45분",
-      players: 4,
-      genre: "SF",
-      image: "/images/planet.png",
-      status: "완료",
-      rating: 4.3,
-    },
-    {
-      id: 9,
-      title: "드래곤 퀘스트",
-      date: "2023-03-15",
-      duration: "6시간 20분",
-      players: 5,
-      genre: "판타지",
-      image: "/images/dragon-quest.png",
-      status: "완료",
-      rating: 4.8,
-    },
-    {
-      id: 10,
-      title: "고대 유적",
-      date: "2023-03-10",
-      duration: "4시간 15분",
-      players: 4,
-      genre: "모험",
-      image: "/images/entrance_to_dungeon.png",
-      status: "완료",
-      rating: 4.5,
+      title: "유령늑대와 전투",
+      genre: "호러",
+      image: "/images/wefl.png",
+      description: "유령의 기운을 두른 괴이한 늑대 무리와의 사투",
     },
   ];
 
@@ -161,15 +109,6 @@ export default function RecentPage() {
   const handleGenreChange = (genre: string) => {
     setSelectedGenre(genre);
     setCurrentPage(0);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "완료": return "bg-green-100 text-green-800";
-      case "진행중": return "bg-blue-100 text-blue-800";
-      case "일시정지": return "bg-yellow-100 text-yellow-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
   };
 
   return (
@@ -250,34 +189,13 @@ export default function RecentPage() {
                         fill
                         className="object-cover rounded-t-lg"
                       />
-                      <div className="absolute top-2 right-2 flex gap-2">
-                        <Badge variant="outline" className={getStatusColor(game.status)}>
-                          {game.status}
-                        </Badge>
-                        <Badge variant="outline" className="bg-background/80 backdrop-blur-sm">
-                          ⭐ {game.rating}
-                        </Badge>
-                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="p-4">
                     <CardTitle className="text-lg mb-2">{game.title}</CardTitle>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Calendar className="h-4 w-4" />
-                        <span>{game.date}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Clock className="h-4 w-4" />
-                        <span>{game.duration}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Users className="h-4 w-4" />
-                        <span>{game.players}명</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Badge variant="secondary">{game.genre}</Badge>
-                      </div>
+                    <CardDescription className="mb-3">{game.description}</CardDescription>
+                    <div className="flex gap-2">
+                      <Badge variant="secondary">{game.genre}</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -312,33 +230,33 @@ export default function RecentPage() {
 
         {/* 통계 정보 */}
         <div className="mt-8">
-          <h3 className="text-xl font-semibold mb-4">플레이 통계</h3>
+          <h3 className="text-xl font-semibold mb-4">게임 통계</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">총 플레이 시간</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">42시간 35분</p>
-                <p className="text-sm text-muted-foreground">이번 달</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">참여한 게임</CardTitle>
+                <CardTitle className="text-lg">총 게임 수</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{recentGames.length}개</p>
-                <p className="text-sm text-muted-foreground">총 게임 수</p>
+                <p className="text-sm text-muted-foreground">플레이한 게임</p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">평균 평점</CardTitle>
+                <CardTitle className="text-lg">선호 장르</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">4.6</p>
-                <p className="text-sm text-muted-foreground">게임 만족도</p>
+                <p className="text-2xl font-bold">판타지</p>
+                <p className="text-sm text-muted-foreground">가장 많이 플레이</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">게임 카테고리</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">4개</p>
+                <p className="text-sm text-muted-foreground">다양한 장르</p>
               </CardContent>
             </Card>
           </div>
@@ -346,4 +264,4 @@ export default function RecentPage() {
       </div>
     </div>
   );
-} 
+}

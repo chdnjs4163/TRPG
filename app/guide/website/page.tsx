@@ -163,7 +163,7 @@ export default function WebsiteGuidePage() {
                         <li><strong>최근 플레이</strong> - 최근 플레이한 게임 목록</li>
                         <li><strong>템플릿</strong> - 게임 템플릿 모음</li>
                         <li><strong>프롬프트</strong> - 게임 프롬프트 모음</li>
-                        <li><strong>이미지</strong> - 게임 관련 이미지 갤러리</li>
+                        
                       </ul>
                     </div>
                     <div>

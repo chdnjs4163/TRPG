@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 
 // 캐릭터 데이터 타입을 정의합니다.
-interface CharacterProfile {
+export interface CharacterProfile {
   id: number;
   name: string;
   race: string;

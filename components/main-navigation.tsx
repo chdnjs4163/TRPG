@@ -58,16 +58,7 @@ export function MainNavigation({ onNavItemClick }: MainNavigationProps) {
       href: "/templates",
       icon: <FileText className="w-5 h-5" />,
     },
-    {
-      title: "프롬프트",
-      href: "/prompts",
-      icon: <BookMarked className="w-5 h-5" />,
-    },
-    {
-      title: "이미지",
-      href: "/images",
-      icon: <ImageIcon className="w-5 h-5" />,
-    },
+    
   ];
 
   const categoryItems: NavItem[] = [
@@ -120,11 +111,6 @@ export function MainNavigation({ onNavItemClick }: MainNavigationProps) {
           <div className="flex items-center gap-2 mb-6">
             <Gamepad2 className="w-6 h-6" />
             <h2 className="text-xl font-bold">TRPG 플랫폼</h2>
-          </div>
-
-          <div className="relative mb-6">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="검색..." className="pl-8" />
           </div>
 
           <ScrollArea className="h-[calc(100vh-180px)]">
