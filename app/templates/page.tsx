@@ -1,27 +1,54 @@
-// 템플릿 페이지 - 장르별 게임 템플릿 탐색/검색/상세 이동
+// 게임 템플릿 목록' 페이지
 "use client";
 
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import Image from "next/image";
+import { Input } from "@/components/ui/input";
 import { MainNavigation } from "@/components/main-navigation";
 import { UserNav } from "@/components/user-nav";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Search, Filter } from "lucide-react";
-import Link from "next/link";
-import Image from "next/image";
-import { useState, useEffect } from "react";
-import { Input } from "@/components/ui/input";
 import { GameInfo } from "@/components/game-info";
-import  CharacterCreation  from "@/components/character-creation";
-import { Badge } from "@/components/ui/badge";
+import CharacterCreation from "@/components/character-creation";
+import CreatingCharacters from "@/components/creating_characters";
+import { type CharacterProfile } from "@/lib/data";
 
 export default function TemplatesPage() {
+  const router = useRouter();
   const [currentPage, setCurrentPage] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGenre, setSelectedGenre] = useState("all");
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
-  const [showCharacterCreation, setShowCharacterCreation] = useState(false);
+  const [flowStep, setFlowStep] = useState<"list" | "info" | "selection" | "creation">("list");
+  const [existingCharacters, setExistingCharacters] = useState<CharacterProfile[]>([]);
+
+  // 🚩 삭제 확인용 상태
+  const [dialogState, setDialogState] = useState<{ isOpen: boolean; characterId: number | null }>({
+    isOpen: false,
+    characterId: null,
+  });
+
   const ITEMS_PER_PAGE = 8;
 
+  // 전체 템플릿 데이터
   const templates = [
     // 판타지 (4개)
     {
@@ -33,7 +60,7 @@ export default function TemplatesPage() {
       scenario: {
         hook: "고요하던 고대의 숲 중심부에서, 수 세기 동안 잠들어 있던 '세계수'가 희미한 빛을 발하기 시작했습니다.",
         role: "당신은 숲의 기운을 감지할 수 있는 드루이드의 후예로, 이 현상의 의미를 파악해야 합니다.",
-        mission: "세계수의 중심으로 여정을 떠나, 숲이 당신에게 무엇을 원하는지 알아내세요."
+        mission: "세계수의 중심으로 여정을 떠나, 숲이 당신에게 무엇을 원하는지 알아내세요.",
       },
       tags: ["#판타지", "#신비", "#탐험", "#정령"],
     },
@@ -46,7 +73,7 @@ export default function TemplatesPage() {
       scenario: {
         hook: "마을에 나타난 현명한 고룡(古龍)이 예언의 일부를 잃어버렸다며 당신에게 도움을 요청합니다.",
         role: "당신은 용과 대화할 수 있는 순수한 마음을 가진 젊은이로, 용의 잃어버린 기억을 찾아줘야 합니다.",
-        mission: "고룡과 함께 단서를 찾아 여행하며, 그가 잊어버린 중요한 예언을 되찾도록 도와주세요."
+        mission: "고룡과 함께 단서를 찾아 여행하며, 그가 잊어버린 중요한 예언을 되찾도록 도와주세요.",
       },
       tags: ["#판타지", "#드래곤", "#동화", "#협력"],
     },
@@ -59,7 +86,7 @@ export default function TemplatesPage() {
       scenario: {
         hook: "모험가 길드 게시판에 '새롭게 발견된 고대 유적'의 탐사 의뢰가 붙었습니다. 선착순 한 파티.",
         role: "당신은 이제 막 길드에 가입한 신참 모험가로, 명성을 얻기 위해 이 의뢰에 지원했습니다.",
-        mission: "유적의 입구 주변을 정찰하고, 내부로 진입하기 위한 안전한 경로를 확보하여 보고하세요."
+        mission: "유적의 입구 주변을 정찰하고, 내부로 진입하기 위한 안전한 경로를 확보하여 보고하세요.",
       },
       tags: ["#판타지", "#던전", "#초보자용", "#탐험"],
     },
@@ -72,11 +99,10 @@ export default function TemplatesPage() {
       scenario: {
         hook: "선왕이 후계자를 정하지 못한 채 급서하면서, 왕국은 세 개의 파벌로 나뉘어 내전 직전의 위기에 처했습니다.",
         role: "당신은 어느 파벌에도 속하지 않은 중립 귀족 가문의 자제로, 왕국의 미래를 걱정하고 있습니다.",
-        mission: "각 파벌의 지도자들을 만나 협상하고, 암살 위협을 막아내며 왕국이 분열되는 것을 막으세요."
+        mission: "각 파벌의 지도자들을 만나 협상하고, 암살 위협을 막아내며 왕국이 분열되는 것을 막으세요.",
       },
       tags: ["#판타지", "#정치", "#음모", "#스토리중심"],
     },
-
     // SF (4개)
     {
       id: 5,
@@ -87,7 +113,7 @@ export default function TemplatesPage() {
       scenario: {
         hook: "탐사선 '오디세이'호가 미지의 성운에서 조난 신호를 발견했습니다. 하지만 신호는 구조 요청이 아닌, 지적인 패턴을 가진 '초대장'이었습니다.",
         role: "당신은 외계 생물학자이자 통신 전문가로, 이 역사적인 첫 접촉을 담당하게 되었습니다.",
-        mission: "신호의 발신지인 고대 정거장에 도킹하여, 그곳에서 당신을 기다리는 존재와 소통하고 그들의 의도를 파악하세요."
+        mission: "신호의 발신지인 고대 정거장에 도킹하여, 그곳에서 당신을 기다리는 존재와 소통하고 그들의 의도를 파악하세요.",
       },
       tags: ["#SF", "#첫접촉", "#탐사", "#외계인"],
     },
@@ -100,7 +126,7 @@ export default function TemplatesPage() {
       scenario: {
         hook: "수십 년의 항해 끝에, 인류가 정착 가능한 첫 외계 행성 '프로메테우스'에 도착했습니다.",
         role: "당신은 행성 개척팀의 선발대로, 미지의 땅에 첫발을 내딛는 임무를 맡았습니다.",
-        mission: "행성의 대기와 자원을 분석하고, 위험한 토착 생물로부터 살아남아 인류를 위한 안전한 정착지를 확보하세요."
+        mission: "행성의 대기와 자원을 분석하고, 위험한 토착 생물로부터 살아남아 인류를 위한 안전한 정착지를 확보하세요.",
       },
       tags: ["#SF", "#탐사", "#생존", "#개척"],
     },
@@ -113,7 +139,7 @@ export default function TemplatesPage() {
       scenario: {
         hook: "거대 기업 '옴니코프'의 데이터 서버에서 극비 정보가 도난당했습니다. 범인의 흔적은 사이버 슬럼가에서 끊겼습니다.",
         role: "당신은 의뢰를 받은 해결사(Fixer)로, 어둠 속에서 정보를 추적해야 합니다.",
-        mission: "정보 거래상, 해커, 암시장 상인들을 상대로 단서를 모아 도난당한 데이터를 회수하세요."
+        mission: "정보 거래상, 해커, 암시장 상인들을 상대로 단서를 모아 도난당한 데이터를 회수하세요.",
       },
       tags: ["#사이버펑크", "#수사", "#잠입", "#도시"],
     },
@@ -126,129 +152,46 @@ export default function TemplatesPage() {
       scenario: {
         hook: "대기권 상공에서 미확인 비행체가 다수 포착되었습니다. 전 세계 통신망이 교란되기 시작합니다.",
         role: "당신은 국제 연합 대응팀의 정예 요원으로, 초기 교전과 대피 작전을 지휘해야 합니다.",
-        mission: "핵심 시설을 방어하고 민간인을 대피시키며, 침공 세력의 약점을 찾아 반격의 발판을 만드세요."
+        mission: "핵심 시설을 방어하고 민간인을 대피시키며, 침공 세력의 약점을 찾아 반격의 발판을 만드세요.",
       },
       tags: ["#SF", "#전쟁", "#전술", "#서바이벌"],
     },
-
-    // 호러 (4개)
-    {
-      id: 9,
-      title: "유령의 저택",
-      description: "저주받은 저택에서 벌어지는 공포의 이야기",
-      image: "/images/ghost_mansion.png",
-      genre: "호러",
-      scenario: {
-        hook: "오래된 언덕 꼭대기의 '블랙우드 저택'. 최근 밤마다 저택의 가장 높은 창문에서 희미한 촛불이 깜박인다는 소문이 돕니다.",
-        role: "당신은 초자연 현상 조사관으로, 이 저택의 미스터리를 풀기 위해 의뢰를 받았습니다.",
-        mission: "저택 내부를 탐사하여 유령의 정체를 밝히고, 그 원혼을 성불시키거나 저택을 정화하세요."
-      },
-      tags: ["#호러", "#초자연", "#미스터리", "#고립"],
-    },
-    {
-      id: 10,
-      title: "유령의 숲",
-      description: "어둠이 깃든 숲에서 벌어지는 생존과 수사의 여정",
-      image: "/images/forestghost.png",
-      genre: "호러",
-      scenario: {
-        hook: "숲 근처 마을에서 아이들이 하나둘씩 사라지고 있습니다. 마지막으로 목격된 장소는 숲의 입구입니다.",
-        role: "당신은 실종 사건을 의뢰받은 사립 탐정으로, 숲의 비밀을 파헤쳐야 합니다.",
-        mission: "숲을 수색하여 실종된 아이들의 흔적을 찾고, 사건의 범인이 인간인지 초자연적 존재인지 밝혀내세요."
-      },
-      tags: ["#호러", "#수사", "#실종", "#크리쳐"],
-    },
-    {
-      id: 11,
-      title: "유령늑대와 전투",
-      description: "유령의 기운을 두른 괴이한 늑대 무리와의 사투",
-      image: "/images/wefl.png",
-      genre: "호러",
-      scenario: {
-        hook: "붉은 달이 뜬 밤, 안개 속에서 푸른 빛을 내는 거대한 늑대 무리가 마을을 습격합니다.",
-        role: "당신은 마을을 지키는 괴물 사냥꾼으로, 이 유령 늑대들을 막아야 합니다.",
-        mission: "마을 사람들과 협력하여 방어선을 구축하고, 무리의 우두머리를 찾아 처치하세요."
-      },
-      tags: ["#호러", "#액션", "#전투", "#괴물"],
-    },
-    {
-      id: 12,
-      title: "심해속에서 유령과 전투",
-      description: "칠흑 같은 심해에서 마주치는 유령과의 생존",
-      image: "/images/deep-seaghost.png",
-      genre: "호러",
-      scenario: {
-        hook: "심해 연구 기지 '포세이돈'의 전력이 갑자기 차단되고, 비상 전력마저 불안정합니다. 외부와의 통신은 두절되었습니다.",
-        role: "당신은 기지에 고립된 연구원으로, 생존을 위해 움직여야 합니다.",
-        mission: "기지의 시스템을 복구하여 탈출 경로를 확보하고, 어둠 속에서 당신을 노리는 미지의 존재를 피하세요."
-      },
-      tags: ["#호러", "#SF", "#생존", "#심해"],
-    },
-
-    // 모험 (4개)
-    {
-      id: 13,
-      title: "잃어버린 보물",
-      description: "전설의 보물을 찾아 떠나는 항해",
-      image: "/images/Pirate_Ship_Adventure.png",
-      genre: "모험",
-      scenario: {
-        hook: "악명 높은 해적 '검은수염'의 보물 지도가 경매에 나왔지만, 사실은 네 조각으로 나뉜 지도 중 하나였습니다.",
-        role: "당신은 보물을 꿈꾸는 선원으로, 우연히 첫 번째 지도 조각을 손에 넣었습니다.",
-        mission: "바다를 항해하며 나머지 지도 조각의 행방을 쫓고, 다른 경쟁자들보다 먼저 보물을 찾아내세요."
-      },
-      tags: ["#모험", "#해적", "#보물찾기", "#항해"],
-    },
-    {
-      id: 14,
-      title: "해적선",
-      description: "해적선의 선원이 되어 바다를 누비는 모험",
-      image: "/images/pirate_Ship.png",
-      genre: "모험",
-      scenario: {
-        hook: "당신이 속한 해적선 '바다 뱀'호의 식량이 거의 떨어졌습니다. 그때, 수평선 너머 거대한 상선이 나타납니다.",
-        role: "당신은 해적선의 갑판원으로, 선장의 명령에 따라 전투를 준비해야 합니다.",
-        mission: "상선에 몰래 침투하여 약탈하거나, 전면전을 벌여 배를 나포하고 필요한 물자를 확보하세요."
-      },
-      tags: ["#모험", "#해적", "#전투", "#약탈"],
-    },
-    {
-      id: 15,
-      title: "던전 탐험",
-      description: "고대 던전을 누비며 몬스터와 보물을 마주하는 클래식 모험",
-      image: "/images/DungeonExploration.png",
-      genre: "모험",
-      scenario: {
-        hook: "마을의 고문서에서 '수정 해골'이라는 유물을 숨겨둔 고대 사원에 대한 기록이 발견되었습니다.",
-        role: "당신은 고고학자 겸 모험가로, 고문서를 해독하여 사원의 위치를 찾아냈습니다.",
-        mission: "사원 내부의 퍼즐을 풀고, 함정을 피하며, 유물을 지키는 수호자를 물리치고 수정 해골을 가져오세요."
-      },
-      tags: ["#모험", "#던전", "#탐험", "#퍼즐"],
-    },
-    {
-      id: 16,
-      title: "던전 마스터",
-      description: "던전을 설계하고 공략하는 전략적 모험",
-      image: "/images/dungeon_master.png",
-      genre: "모험",
-      scenario: {
-        hook: "당신은 한때 위대한 던전 마스터였지만, 라이벌의 함정에 빠져 모든 것을 잃었습니다.",
-        role: "당신은 복수를 꿈꾸는 던전 설계자로, 당신만의 던전을 만들어 라이벌을 유인해야 합니다.",
-        mission: "자원을 모아 함정과 몬스터를 배치하고, 라이벌 모험가들의 공격을 막아내 최종적으로 복수하세요."
-      },
-      tags: ["#모험", "#던전", "#설계", "#전략"],
-    },
-  ];
+  ]
 
   const genres = ["all", "판타지", "SF", "호러", "모험"];
 
+  // 캐릭터 불러오기
+  useEffect(() => {
+    const savedCharacters = localStorage.getItem("characters");
+    if (savedCharacters) {
+      setExistingCharacters(JSON.parse(savedCharacters));
+    }
+  }, []);
+
+  // 삭제 버튼 → 다이얼로그 열기
+  const confirmDeleteCharacter = (characterId: number) => {
+    setDialogState({ isOpen: true, characterId });
+  };
+
+  // 다이얼로그에서 삭제 확정
+  const handleDeleteCharacter = () => {
+    if (dialogState.characterId === null) return;
+    const updatedCharacters = existingCharacters.filter((c) => c.id !== dialogState.characterId);
+    setExistingCharacters(updatedCharacters);
+    localStorage.setItem("characters", JSON.stringify(updatedCharacters));
+    setDialogState({ isOpen: false, characterId: null });
+  };
+
+  // 필터링
   const filteredTemplates = templates.filter((template) => {
-    const matchesSearch = template.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         template.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch =
+      template.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      template.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesGenre = selectedGenre === "all" || template.genre === selectedGenre;
     return matchesSearch && matchesGenre;
   });
 
+  // 페이지 이동
   const changePage = (direction: "prev" | "next") => {
     const maxPage = Math.ceil(filteredTemplates.length / ITEMS_PER_PAGE) - 1;
     if (direction === "prev" && currentPage > 0) {
@@ -261,54 +204,6 @@ export default function TemplatesPage() {
   const getCurrentPageItems = () => {
     const startIndex = currentPage * ITEMS_PER_PAGE;
     return filteredTemplates.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  };
-
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    setCurrentPage(0);
-  };
-
-  const handleGenreChange = (genre: string) => {
-    setSelectedGenre(genre);
-    setCurrentPage(0);
-  };
-
-  // URL 파라미터 처리
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const titleParam = urlParams.get('title');
-    const gameId = urlParams.get('gameId');
-    if (titleParam) {
-      const templateByTitle = templates.find(t => t.title === titleParam);
-      if (templateByTitle) {
-        setSelectedTemplate(templateByTitle);
-        return;
-      }
-    }
-    if (gameId) {
-      const templateById = templates.find(t => t.id === parseInt(gameId));
-      if (templateById) {
-        setSelectedTemplate(templateById);
-      }
-    }
-  }, []);
-
-  const handleTemplateClick = (template: any) => {
-    setSelectedTemplate(template);
-  };
-
-  const handleStartGame = () => {
-    setShowCharacterCreation(true);
-  };
-
-  const handleCharacterCreated = (character: any) => {
-    // 캐릭터 생성 완료 후 게임 페이지로 이동
-    window.location.href = `/game/${selectedTemplate.id}?character=${encodeURIComponent(JSON.stringify(character))}&title=${encodeURIComponent(selectedTemplate.title)}`;
-  };
-
-  const handleBack = () => {
-    setSelectedTemplate(null);
-    setShowCharacterCreation(false);
   };
 
   return (
@@ -324,7 +219,7 @@ export default function TemplatesPage() {
             <UserNav />
           </div>
 
-          {/* 검색 및 필터 */}
+          {/* 검색/장르 필터 */}
           <div className="mb-6 space-y-4">
             <div className="flex gap-4">
               <div className="relative flex-1">
@@ -332,7 +227,10 @@ export default function TemplatesPage() {
                 <Input
                   placeholder="템플릿 검색..."
                   value={searchTerm}
-                  onChange={(e) => handleSearchChange(e.target.value)}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(0);
+                  }}
                   className="pl-10"
                 />
               </div>
@@ -341,7 +239,10 @@ export default function TemplatesPage() {
                   <Button
                     key={genre}
                     variant={selectedGenre === genre ? "default" : "outline"}
-                    onClick={() => handleGenreChange(genre)}
+                    onClick={() => {
+                      setSelectedGenre(genre);
+                      setCurrentPage(0);
+                    }}
                     className="capitalize"
                   >
                     {genre === "all" ? "전체" : genre}
@@ -351,20 +252,14 @@ export default function TemplatesPage() {
             </div>
           </div>
 
-          {/* 템플릿 목록 */}
+          {/* 목록 */}
           <div className="mb-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-semibold">
-                {selectedGenre === "all" ? "전체" : selectedGenre} 템플릿
-                ({filteredTemplates.length}개)
+                {selectedGenre === "all" ? "전체" : selectedGenre} 템플릿 ({filteredTemplates.length}개)
               </h2>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => changePage("prev")}
-                  disabled={currentPage === 0}
-                >
+                <Button variant="outline" size="icon" onClick={() => changePage("prev")} disabled={currentPage === 0}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <Button
@@ -377,22 +272,19 @@ export default function TemplatesPage() {
                 </Button>
               </div>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {getCurrentPageItems().map((template) => (
                 <Card
                   key={template.id}
                   className="h-full hover:bg-accent/50 transition-colors cursor-pointer"
-                  onClick={() => handleTemplateClick(template)}
+                  onClick={() => {
+                    setSelectedTemplate(template);
+                    setFlowStep("info");
+                  }}
                 >
                   <CardHeader className="p-0">
                     <div className="relative w-full h-48">
-                      <Image
-                        src={template.image || "/placeholder.svg"}
-                        alt={template.title}
-                        fill
-                        className="object-cover rounded-t-lg"
-                      />
+                      <Image src={template.image || "/placeholder.svg"} alt={template.title} fill className="object-cover rounded-t-lg" />
                     </div>
                   </CardHeader>
                   <CardContent className="p-4">
@@ -402,74 +294,65 @@ export default function TemplatesPage() {
                 </Card>
               ))}
             </div>
-
-            {filteredTemplates.length > 0 && (
-              <div className="flex justify-center mt-4">
-                <p className="text-sm text-muted-foreground">
-                  페이지 {currentPage + 1} / {Math.ceil(filteredTemplates.length / ITEMS_PER_PAGE)}
-                </p>
-              </div>
-            )}
-
-            {filteredTemplates.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">검색 조건에 맞는 템플릿이 없습니다.</p>
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setSearchTerm("");
-                    setSelectedGenre("all");
-                  }}
-                  className="mt-4"
-                >
-                  필터 초기화
-                </Button>
-              </div>
-            )}
-          </div>
-          
-          {/* 템플릿 사용 가이드 */}
-          <div className="mt-8">
-            <h3 className="text-xl font-semibold mb-4">템플릿 사용법</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>템플릿 선택</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p>게임 장르와 플레이어 수, 소요시간을 고려하여 적합한 템플릿을 선택하세요.</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>커스터마이징</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p>선택한 템플릿을 기반으로 자신만의 스토리와 설정을 추가하여 게임을 진행하세요.</p>
-                </CardContent>
-              </Card>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* 게임 정보 모달 */}
-      {selectedTemplate && !showCharacterCreation && (
-        <GameInfo
+      {/* 상세 → 캐릭터 선택 → 캐릭터 생성 플로우 */}
+      {flowStep === "info" && selectedTemplate && (
+        <GameInfo gameInfo={selectedTemplate} onStartGame={() => setFlowStep("selection")} onBack={() => setFlowStep("list")} />
+      )}
+      {flowStep === "selection" && (
+        <CreatingCharacters
+          existingCharacters={existingCharacters}
+          onSelectCharacter={(char) => {
+            if (!selectedTemplate) return;
+            const url = `/game/${selectedTemplate.id}?character=${encodeURIComponent(JSON.stringify(char))}&title=${encodeURIComponent(
+              selectedTemplate.title
+            )}`;
+            router.push(url);
+          }}
+          onCreateNew={() => setFlowStep("creation")}
+          onCancel={() => setFlowStep("info")}
+          onDeleteCharacter={confirmDeleteCharacter}
+        />
+      )}
+      {flowStep === "creation" && selectedTemplate && (
+        <CharacterCreation
           gameInfo={selectedTemplate}
-          onStartGame={handleStartGame}
-          onBack={handleBack}
+          onCharacterCreated={(char) => {
+            const updated = [...existingCharacters, char];
+            setExistingCharacters(updated);
+            localStorage.setItem("characters", JSON.stringify(updated));
+            const url = `/game/${selectedTemplate.id}?character=${encodeURIComponent(JSON.stringify(char))}&title=${encodeURIComponent(
+              selectedTemplate.title
+            )}`;
+            router.push(url);
+          }}
+          onCancel={() => setFlowStep("selection")}
         />
       )}
 
-      {/* 캐릭터 생성 모달 */}
-      {showCharacterCreation && selectedTemplate && (
-        <CharacterCreation
-          gameInfo={selectedTemplate}
-          onCharacterCreated={handleCharacterCreated}
-          onCancel={handleBack}
-        />
-      )}
+      {/* 삭제 확인 다이얼로그 */}
+      <AlertDialog
+        open={dialogState.isOpen}
+        onOpenChange={(isOpen) => setDialogState({ isOpen, characterId: isOpen ? dialogState.characterId : null })}
+      >
+        <AlertDialogContent className="bg-gray-800 text-white border-gray-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle>정말로 삭제하시겠습니까?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-300">
+              이 작업은 되돌릴 수 없습니다. 캐릭터가 영구적으로 삭제됩니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-gray-700 text-white hover:bg-gray-600 border-gray-600">취소</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 text-white hover:bg-red-700" onClick={handleDeleteCharacter}>
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

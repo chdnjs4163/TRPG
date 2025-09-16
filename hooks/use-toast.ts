@@ -1,3 +1,5 @@
+//'토스트(Toast)' 팝업 알림 시스템 훅
+// 간단한 메시지를 사용자에게 보여주기 위한 UI 컴포넌트
 "use client"
 
 // Inspired by react-hot-toast library

@@ -26,11 +26,9 @@ export function Header() {
 
           {/* 네비게이션 링크 */}
           <nav className="hidden md:flex gap-4">
-            
-            <Link href="/recent" className="hover:text-primary">
-              탐색
-            </Link>
+
           </nav>
+          
         </div>
 
         {/* 검색창 */}

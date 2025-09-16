@@ -1,7 +1,5 @@
 // 대시보드 페이지 - 홈/최근/템플릿/가이드/AI 챗봇 허브
-"use client"; // 메인 대시보드(로비 페이지)
-
-import type React from "react";
+"use client";
 
 import { useState } from "react";
 import { MainNavigation } from "@/components/main-navigation";
@@ -15,11 +13,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Gamepad2, Info, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, Gamepad2, Info } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { AiChatbot } from "@/components/ai-chatbot";
-import { useRouter } from "next/navigation";
 
 interface NavItem {
   title: string;
@@ -29,16 +26,12 @@ interface NavItem {
 
 export default function DashboardPage() {
   const [activeSection, setActiveSection] = useState<string>("홈");
-
-  // 페이지네이션을 위한 상태 추가
   const [recentGamesPage, setRecentGamesPage] = useState(0);
   const [templatesPage, setTemplatesPage] = useState(0);
 
-  // 한 페이지에 표시할 아이템 수
   const ITEMS_PER_PAGE = 5;
 
   const recentGames = [
-    
     {
       id: 1,
       title: "던전 탐험",
@@ -81,16 +74,14 @@ export default function DashboardPage() {
       date: "2023-03-25",
       image: "/images/wefl.png",
     },
-  
     {
       id: 8,
       title: "드래곤 퀘스트",
       date: "2023-03-15",
       image: "/images/dragon-quest.png",
-    },      
+    },
   ];
 
-  // 템플릿 데이터 (새로 제작된 템플릿)
   const templates = [
     {
       id: 1,
@@ -98,21 +89,18 @@ export default function DashboardPage() {
       description: "던전 탐험을 위한 템플릿",
       image: "/images/dungeon_master.png",
     },
-
     {
       id: 2,
       title: "심해속에서 유령과 전투",
       description: "공포 분위기의 게임을 위한 템플릿",
       image: "/images/deep-seaghost.png",
     },
-
     {
-  id: 3,
-  title: "판타지 왕국",
-  description: "판타지 세계에서의 모험 템플릿",
-  image: "/images/fantasy-kingdom.png",
+      id: 3,
+      title: "판타지 왕국",
+      description: "판타지 세계에서의 모험 템플릿",
+      image: "/images/fantasy-kingdom.png",
     },
-    
     {
       id: 4,
       title: "외계인 침공",
@@ -121,7 +109,6 @@ export default function DashboardPage() {
     },
   ];
 
-  // 판타지 게임 데이터
   const fantasyGames = [
     {
       id: 1,
@@ -210,7 +197,6 @@ export default function DashboardPage() {
     setActiveSection(item.title);
   };
 
-  // 페이지 이동 함수
   const changePage = (
     type: "recentGames" | "templates",
     direction: "prev" | "next"
@@ -232,13 +218,10 @@ export default function DashboardPage() {
     }
   };
 
-  // 현재 페이지에 표시할 아이템 가져오기
   const getCurrentPageItems = (items: any[], page: number) => {
     const startIndex = page * ITEMS_PER_PAGE;
     return items.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   };
-
-  const router = useRouter();
 
   const renderContent = () => {
     switch (activeSection) {
@@ -273,36 +256,34 @@ export default function DashboardPage() {
               </div>
               <div className="grid grid-cols-5 gap-4">
                 {getCurrentPageItems(recentGames, recentGamesPage).map(
-                  (game) => {
-                    return (
-                      <Link
-                        href={`/game/${game.id}`}
-                        key={game.id}
-                        className="block"
-                      >
-                        <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                          <CardHeader className="p-0">
-                            <div className="relative w-full h-40">
-                              <Image
-                                src={game.image || "/placeholder.svg"}
-                                alt={game.title}
-                                fill
-                                className="object-cover rounded-t-lg"
-                              />
-                            </div>
-                          </CardHeader>
-                          <CardContent className="p-4">
-                            <CardTitle className="text-lg">
-                              {game.title}
-                            </CardTitle>
-                            <CardDescription>
-                              마지막 플레이: {game.date}
-                            </CardDescription>
-                          </CardContent>
-                        </Card>
-                      </Link>
-                    );
-                  }
+                  (game) => (
+                    <Link
+                      href={`/game/${game.id}`}
+                      key={game.id}
+                      className="block"
+                    >
+                      <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
+                        <CardHeader className="p-0">
+                          <div className="relative w-full h-40">
+                            <Image
+                              src={game.image || "/placeholder.svg"}
+                              alt={game.title}
+                              fill
+                              className="object-cover rounded-t-lg"
+                            />
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-4">
+                          <CardTitle className="text-lg">
+                            {game.title}
+                          </CardTitle>
+                          <CardDescription>
+                            마지막 플레이: {game.date}
+                          </CardDescription>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  )
                 )}
               </div>
               <div className="flex justify-center mt-2">
@@ -341,36 +322,34 @@ export default function DashboardPage() {
               </div>
               <div className="grid grid-cols-5 gap-4">
                 {getCurrentPageItems(templates, templatesPage).map(
-                  (template) => {
-                    return (
-                      <Link
-                        href={`/template/${template.id}`}
-                        key={template.id}
-                        className="block"
-                      >
-                        <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                          <CardHeader className="p-0">
-                            <div className="relative w-full h-40">
-                              <Image
-                                src={template.image || "/placeholder.svg"}
-                                alt={template.title}
-                                fill
-                                className="object-cover rounded-t-lg"
-                              />
-                            </div>
-                          </CardHeader>
-                          <CardContent className="p-4">
-                            <CardTitle className="text-lg">
-                              {template.title}
-                            </CardTitle>
-                            <CardDescription>
-                              {template.description}
-                            </CardDescription>
-                          </CardContent>
-                        </Card>
-                      </Link>
-                    );
-                  }
+                  (template) => (
+                    <Link
+                      href={`/template/${template.id}`}
+                      key={template.id}
+                      className="block"
+                    >
+                      <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
+                        <CardHeader className="p-0">
+                          <div className="relative w-full h-40">
+                            <Image
+                              src={template.image || "/placeholder.svg"}
+                              alt={template.title}
+                              fill
+                              className="object-cover rounded-t-lg"
+                            />
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-4">
+                          <CardTitle className="text-lg">
+                            {template.title}
+                          </CardTitle>
+                          <CardDescription>
+                            {template.description}
+                          </CardDescription>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  )
                 )}
               </div>
               <div className="flex justify-center mt-2">
@@ -429,7 +408,7 @@ export default function DashboardPage() {
               </Card>
             </section>
 
-            {/* AI 채팅 섹션  백엔드 서버와 연동해서 하기*/}
+            {/* AI 채팅 섹션 */}
             <section className="mt-10">
               <Card>
                 <CardHeader>
@@ -446,101 +425,33 @@ export default function DashboardPage() {
             </section>
           </>
         );
-      case "최근 플레이":
-        return (
-          <section>
-            <h2 className="text-2xl font-semibold mb-6">최근 플레이한 게임</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {recentGames.map((game) => {
-                return (
-                  <Link href={`/game/${game.id}`} key={game.id}>
-                    <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                      <CardHeader className="p-0">
-                        <div className="relative w-full h-40">
-                          <Image
-                            src={game.image || "/placeholder.svg"}
-                            alt={game.title}
-                            fill
-                            className="object-cover rounded-t-lg"
-                          />
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        <CardTitle className="text-lg">{game.title}</CardTitle>
-                        <CardDescription>
-                          마지막 플레이: {game.date}
-                        </CardDescription>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
-        );
-      case "템플릿":
-        return (
-          <section>
-            <h2 className="text-2xl font-semibold mb-6">게임 템플릿</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {templates.map((template) => {
-                return (
-                  <Link href={`/template/${template.id}`} key={template.id}>
-                    <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                      <CardHeader className="p-0">
-                        <div className="relative w-full h-40">
-                          <Image
-                            src={template.image || "/placeholder.svg"}
-                            alt={template.title}
-                            fill
-                            className="object-cover rounded-t-lg"
-                          />
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        <CardTitle className="text-lg">
-                          {template.title}
-                        </CardTitle>
-                        <CardDescription>
-                          {template.description}
-                        </CardDescription>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
-        );
       case "판타지":
         return (
           <section>
             <h2 className="text-2xl font-semibold mb-6">판타지 게임</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {fantasyGames.map((game) => {
-                return (
-                  <Link href={`/game/${game.id}`} key={game.id}>
-                    <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                      <CardHeader className="p-0">
-                        <div className="relative w-full h-40">
-                          <Image
-                            src={game.image || "/placeholder.svg"}
-                            alt={game.title}
-                            fill
-                            className="object-cover rounded-t-lg"
-                          />
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        <CardTitle className="text-lg">{game.title}</CardTitle>
-                        <CardDescription>
-                          마지막 플레이: {game.date}
-                        </CardDescription>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
+              {fantasyGames.map((game) => (
+                <Link href={`/game/${game.id}`} key={game.id}>
+                  <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
+                    <CardHeader className="p-0">
+                      <div className="relative w-full h-40">
+                        <Image
+                          src={game.image || "/placeholder.svg"}
+                          alt={game.title}
+                          fill
+                          className="object-cover rounded-t-lg"
+                        />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-4">
+                      <CardTitle className="text-lg">{game.title}</CardTitle>
+                      <CardDescription>
+                        마지막 플레이: {game.date}
+                      </CardDescription>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
             </div>
           </section>
         );
@@ -549,30 +460,28 @@ export default function DashboardPage() {
           <section>
             <h2 className="text-2xl font-semibold mb-6">SF 게임</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {scifiGames.map((game) => {
-                return (
-                  <Link href={`/game/${game.id}`} key={game.id}>
-                    <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                      <CardHeader className="p-0">
-                        <div className="relative w-full h-40">
-                          <Image
-                            src={game.image || "/placeholder.svg"}
-                            alt={game.title}
-                            fill
-                            className="object-cover rounded-t-lg"
-                          />
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        <CardTitle className="text-lg">{game.title}</CardTitle>
-                        <CardDescription>
-                          마지막 플레이: {game.date}
-                        </CardDescription>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
+              {scifiGames.map((game) => (
+                <Link href={`/game/${game.id}`} key={game.id}>
+                  <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
+                    <CardHeader className="p-0">
+                      <div className="relative w-full h-40">
+                        <Image
+                          src={game.image || "/placeholder.svg"}
+                          alt={game.title}
+                          fill
+                          className="object-cover rounded-t-lg"
+                        />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-4">
+                      <CardTitle className="text-lg">{game.title}</CardTitle>
+                      <CardDescription>
+                        마지막 플레이: {game.date}
+                      </CardDescription>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
             </div>
           </section>
         );
@@ -581,30 +490,28 @@ export default function DashboardPage() {
           <section>
             <h2 className="text-2xl font-semibold mb-6">호러 게임</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {horrorGames.map((game) => {
-                return (
-                  <Link href={`/game/${game.id}`} key={game.id}>
-                    <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                      <CardHeader className="p-0">
-                        <div className="relative w-full h-40">
-                          <Image
-                            src={game.image || "/placeholder.svg"}
-                            alt={game.title}
-                            fill
-                            className="object-cover rounded-t-lg"
-                          />
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        <CardTitle className="text-lg">{game.title}</CardTitle>
-                        <CardDescription>
-                          마지막 플레이: {game.date}
-                        </CardDescription>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
+              {horrorGames.map((game) => (
+                <Link href={`/game/${game.id}`} key={game.id}>
+                  <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
+                    <CardHeader className="p-0">
+                      <div className="relative w-full h-40">
+                        <Image
+                          src={game.image || "/placeholder.svg"}
+                          alt={game.title}
+                          fill
+                          className="object-cover rounded-t-lg"
+                        />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-4">
+                      <CardTitle className="text-lg">{game.title}</CardTitle>
+                      <CardDescription>
+                        마지막 플레이: {game.date}
+                      </CardDescription>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
             </div>
           </section>
         );
@@ -613,30 +520,28 @@ export default function DashboardPage() {
           <section>
             <h2 className="text-2xl font-semibold mb-6">모험 게임</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {adventureGames.map((game) => {
-                return (
-                  <Link href={`/game/${game.id}`} key={game.id}>
-                    <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                      <CardHeader className="p-0">
-                        <div className="relative w-full h-40">
-                          <Image
-                            src={game.image || "/placeholder.svg"}
-                            alt={game.title}
-                            fill
-                            className="object-cover rounded-t-lg"
-                          />
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-4">
-                        <CardTitle className="text-lg">{game.title}</CardTitle>
-                        <CardDescription>
-                          마지막 플레이: {game.date}
-                        </CardDescription>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
+              {adventureGames.map((game) => (
+                <Link href={`/game/${game.id}`} key={game.id}>
+                  <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
+                    <CardHeader className="p-0">
+                      <div className="relative w-full h-40">
+                        <Image
+                          src={game.image || "/placeholder.svg"}
+                          alt={game.title}
+                          fill
+                          className="object-cover rounded-t-lg"
+                        />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-4">
+                      <CardTitle className="text-lg">{game.title}</CardTitle>
+                      <CardDescription>
+                        마지막 플레이: {game.date}
+                      </CardDescription>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
             </div>
           </section>
         );
@@ -737,7 +642,6 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold">{activeSection}</h1>
           <UserNav />
         </div>
-
         {renderContent()}
       </div>
     </div>

@@ -1,4 +1,5 @@
-// 게임 사이드바 - 플레이어/맵/인벤토리 탭 UI
+// 게임 화면의 주요 정보를 보여주는 접이식 사이드바
+
 "use client"
 
 import type React from "react"
@@ -9,8 +10,9 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
-import { ChevronLeft, ChevronRight, Users, BookOpen, Info } from "lucide-react"
+import { ChevronLeft, ChevronRight, Users, BookOpen } from "lucide-react" // Info 아이콘 제거
 
+// [수정] Player 인터페이스는 외부에서 받아올 실제 데이터에 맞게 확장될 수 있습니다.
 interface Player {
   id: number
   name: string
@@ -19,20 +21,14 @@ interface Player {
 }
 
 interface GameSidebarProps {
-  gameId: string
+  players: Player[] // [수정] players를 props로 받도록 변경
   onPlayerClick?: (player: Player) => void
-  children?: React.ReactNode
 }
 
-export function GameSidebar({ gameId, onPlayerClick, children }: GameSidebarProps) {
+export function GameSidebar({ players, onPlayerClick }: GameSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
 
-  const players = [
-    { id: 1, name: "플레이어1", role: "전사", avatar: "/placeholder.svg?height=40&width=40" },
-    { id: 2, name: "플레이어2", role: "마법사", avatar: "/placeholder.svg?height=40&width=40" },
-    { id: 3, name: "플레이어3", role: "궁수", avatar: "/placeholder.svg?height=40&width=40" },
-    { id: 4, name: "GM", role: "게임 마스터", avatar: "/placeholder.svg?height=40&width=40" },
-  ]
+  // [제거] 하드코딩된 샘플 players 배열을 삭제했습니다.
 
   return (
     <div
@@ -52,7 +48,8 @@ export function GameSidebar({ gameId, onPlayerClick, children }: GameSidebarProp
 
       <div className={cn("h-full", isCollapsed ? "overflow-hidden" : "")}>
         <Tabs defaultValue="players" className="h-full">
-          <TabsList className={cn("grid h-14 w-full", isCollapsed ? "grid-cols-1" : "grid-cols-3")}>
+          {/* [수정] 탭을 2개로 줄입니다. */}
+          <TabsList className={cn("grid h-14 w-full", isCollapsed ? "grid-cols-1" : "grid-cols-2")}>
             <TabsTrigger value="players" className="flex items-center justify-center">
               <Users className="h-5 w-5" />
               {!isCollapsed && <span className="ml-2">플레이어</span>}
@@ -61,39 +58,31 @@ export function GameSidebar({ gameId, onPlayerClick, children }: GameSidebarProp
               <BookOpen className="h-5 w-5 mr-2" />
               가이드
             </TabsTrigger>
-            <TabsTrigger value="info" className={cn(isCollapsed && "hidden")}>
-              <Info className="h-5 w-5 mr-2" />
-              정보
-            </TabsTrigger>
+            {/* [제거] 정보(Info) 탭을 삭제했습니다. */}
           </TabsList>
 
           <TabsContent value="players" className="h-[calc(100%-3.5rem)] p-0">
             <ScrollArea className="h-full">
               <div className="p-4 space-y-4">
-                {children ? (
-                  children
-                ) : (
-                  <>
-                    {players.map((player) => (
-                      <div
-                        key={player.id}
-                        className="flex items-center gap-3 rounded-lg p-2 hover:bg-accent/50 cursor-pointer"
-                        onClick={() => onPlayerClick && onPlayerClick(player)}
-                      >
-                        <Avatar>
-                          <AvatarImage src={player.avatar || "/placeholder.svg"} alt={player.name} />
-                          <AvatarFallback>{player.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        {!isCollapsed && (
-                          <div>
-                            <div className="font-medium">{player.name}</div>
-                            <div className="text-xs text-muted-foreground">{player.role}</div>
-                          </div>
-                        )}
+                {/* [수정] props로 받은 players 배열을 사용합니다. */}
+                {players.map((player) => (
+                  <div
+                    key={player.id}
+                    className="flex items-center gap-3 rounded-lg p-2 hover:bg-accent/50 cursor-pointer"
+                    onClick={() => onPlayerClick && onPlayerClick(player)}
+                  >
+                    <Avatar>
+                      <AvatarImage src={player.avatar || "/placeholder.svg"} alt={player.name} />
+                      <AvatarFallback>{player.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    {!isCollapsed && (
+                      <div>
+                        <div className="font-medium">{player.name}</div>
+                        <div className="text-xs text-muted-foreground">{player.role}</div>
                       </div>
-                    ))}
-                  </>
-                )}
+                    )}
+                  </div>
+                ))}
               </div>
             </ScrollArea>
           </TabsContent>
@@ -119,28 +108,8 @@ export function GameSidebar({ gameId, onPlayerClick, children }: GameSidebarProp
               </div>
             </ScrollArea>
           </TabsContent>
-
-          <TabsContent value="info" className={cn("h-[calc(100%-3.5rem)] p-4", isCollapsed && "hidden")}>
-            <ScrollArea className="h-full">
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">게임 정보</h3>
-                <div className="space-y-2">
-                  <h4 className="font-medium">던전 탐험</h4>
-                  <p className="text-sm text-muted-foreground">
-                    세션 #{gameId}
-                    <br />
-                    시작: 2023-04-20 19:00
-                    <br />
-                    GM: 게임마스터
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <h4 className="font-medium">현재 위치</h4>
-                  <p className="text-sm text-muted-foreground">어두운 던전 - 1층 입구</p>
-                </div>
-              </div>
-            </ScrollArea>
-          </TabsContent>
+          
+          {/* [제거] 정보(Info) 탭 콘텐츠를 삭제했습니다. */}
         </Tabs>
       </div>
     </div>

@@ -1,3 +1,4 @@
+//장르별 게임 요약 정보와 템플릿 정보를 정의하고 내보내는 파일
 export type GameSummary = {
   title: string;
   image: string;
@@ -54,32 +55,32 @@ export const gamesByGenre: Record<"판타지" | "모험" | "SF" | "호러", Game
   ],
 };
 
-// 템플릿 정의 (기존 templates/page.tsx 의 데이터 동일)
-export const templates: TemplateInfo[] = [
-  {
-    id: 1,
-    title: "던전 마스터",
-    description: "던전 탐험을 위한 템플릿",
-    genre: "판타지",
-    players: "3-5명",
-    duration: "2-4시간",
-    image: "/images/dungeon_master.png",
-    rating: 4.8,
-    difficulty: "medium",
-    estimatedTime: "2-4시간",
-    maxPlayers: 5,
-    setting: "고대 던전",
-    recommendedLevel: "중급자",
-    features: ["던전 탐험", "보물 수집", "몬스터 전투", "퍼즐 해결"],
-    scenario: {
-      hook: "침묵하던 고대 던전의 문이 스스로 열렸습니다. 깊은 곳에서 낯선 진동이 느껴집니다.",
-      role: "당신은 왕국에 의해 파견된 모험단의 일원으로, 봉인이 풀린 이유를 조사해야 합니다.",
-      mission: "던전 심층으로 진입해 봉인의 붕괴 원인을 밝혀내고, 다시 봉인하거나 위협을 제거하세요.",
-    },
-    tags: ["#판타지", "#탐험", "#퍼즐", "#중급자용", "#스토리중심"],
-    platformFeatures: ["AI 게임마스터", "실시간 채팅", "다이스 롤러", "캐릭터 관리", "맵 시스템"],
-  },
-  // ... (나머지 템플릿들은 기존 templates/page.tsx 와 동일하게 옮김)
-];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

@@ -1,3 +1,5 @@
+//'게임 템플릿 상세 정보' 페이지
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,50 +8,52 @@ import { templates, type CharacterProfile } from "@/lib/data";
 import { GameInfo } from "@/components/game-info";
 import CreatingCharacters from "@/components/creating_characters";
 import CharacterCreation from "@/components/character-creation";
-import { Button } from "@/components/ui/button";
 
 export default function TemplateDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
-  const [step, setStep] = useState<'info' | 'selection'>('info');
+  const [step, setStep] = useState<'info' | 'selection' | 'creation'>('info');
   const [gameTemplate, setGameTemplate] = useState<any>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [createdCharacter, setCreatedCharacter] = useState<CharacterProfile | null>(null);
-  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [existingCharacters, setExistingCharacters] = useState<CharacterProfile[]>([]);
 
   useEffect(() => {
     if (params.id) {
       const foundTemplate = templates.find(t => t.id === parseInt(params.id));
       setGameTemplate(foundTemplate);
     }
+    const savedCharacters = localStorage.getItem('characters');
+    if (savedCharacters) {
+      setExistingCharacters(JSON.parse(savedCharacters));
+    }
   }, [params.id]);
 
-  const myCharacters: CharacterProfile[] = [
-    { id: 1, name: "아라곤", race: "인간", class: "레인저", level: 5, avatar: "/avatars/aragon.png", favorite: true },
-    { id: 2, name: "레골라스", race: "엘프", class: "궁수", level: 5, avatar: "/avatars/legolas.png", favorite: false },
-  ];
-
   const handleSelectCharacter = (character: CharacterProfile) => {
-    router.push(`/game/${gameTemplate?.id}?character=${encodeURIComponent(JSON.stringify(character))}`);
-  };
-
-  const handleCreateNew = () => setIsCreating(true);
-
-  const handleCharacterCreated = (newChar: CharacterProfile) => {
-    setCreatedCharacter(newChar);
-    setIsCreating(false);
-    setShowCompleteModal(true); // 생성 완료 모달 표시
-  };
-
-  const handleModalConfirm = () => {
-    if (createdCharacter) {
-      router.push(`/game/${gameTemplate?.id}?character=${encodeURIComponent(JSON.stringify(createdCharacter))}`);
+    if (gameTemplate) {
+      router.push(`/game/${gameTemplate.id}?character=${encodeURIComponent(JSON.stringify(character))}`);
     }
   };
 
+  const handleCreateNew = () => setStep('creation');
+  
   const handleCancel = () => {
-    if (isCreating) setIsCreating(false);
+    if (step === 'creation') setStep('selection');
     else if (step === 'selection') setStep('info');
     else router.back();
+  };
+
+  const handleCharacterCreated = (newChar: CharacterProfile) => {
+    const updatedCharacters = [...existingCharacters, newChar];
+    setExistingCharacters(updatedCharacters);
+    localStorage.setItem('characters', JSON.stringify(updatedCharacters));
+    handleSelectCharacter(newChar);
+  };
+  
+  // [수정] 이 함수가 직접 삭제를 처리합니다.
+  const handleDeleteCharacter = (characterId: number) => {
+    if (window.confirm("정말로 이 캐릭터를 삭제하시겠습니까?")) {
+        const updatedCharacters = existingCharacters.filter(char => char.id !== characterId);
+        setExistingCharacters(updatedCharacters);
+        localStorage.setItem('characters', JSON.stringify(updatedCharacters));
+    }
   };
 
   if (!gameTemplate) return <div>템플릿 정보를 불러오는 중...</div>;
@@ -66,30 +70,20 @@ export default function TemplateDetailPage({ params }: { params: { id: string } 
 
       {step === 'selection' && (
         <CreatingCharacters
-          existingCharacters={myCharacters}
+          existingCharacters={existingCharacters}
           onSelectCharacter={handleSelectCharacter}
           onCreateNew={handleCreateNew}
           onCancel={handleCancel}
+          onDeleteCharacter={handleDeleteCharacter} // [수정] onDeleteCharacter를 직접 전달합니다.
         />
       )}
 
-      {isCreating && (
+      {step === 'creation' && (
         <CharacterCreation
           gameInfo={gameTemplate}
           onCharacterCreated={handleCharacterCreated}
-          onCancel={() => setIsCreating(false)}
+          onCancel={() => setStep('selection')}
         />
-      )}
-
-      {/* 캐릭터 생성 완료 모달 */}
-      {showCompleteModal && createdCharacter && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-          <div className="bg-card p-6 rounded-lg shadow-lg w-96 text-center">
-            <h2 className="text-2xl font-bold mb-4">캐릭터 생성 완료!</h2>
-            <p className="mb-4">{createdCharacter.name} 캐릭터가 생성되었습니다.</p>
-            <Button onClick={handleModalConfirm}>게임 시작</Button>
-          </div>
-        </div>
       )}
     </div>
   );

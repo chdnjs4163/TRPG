@@ -1,3 +1,6 @@
+// 중앙 데이터 저장소 역할을 하는 파일
+// 게임 요약 정보와 템플릿 정보를 정의하고 내보냄
+// 다른 컴포넌트나 페이지에서 이 데이터를 가져와 사용할 수 있음
 // 캐릭터 타입을 정의하고 내보냅니다 (export).
 export interface CharacterProfile {
   id: number;
@@ -7,6 +10,7 @@ export interface CharacterProfile {
   level: number;
   avatar: string;
   favorite: boolean;
+  background?: string;
 }
 // 게임 템플릿 타입을 정의하고 내보냅니다 (export).
 export const templates = [

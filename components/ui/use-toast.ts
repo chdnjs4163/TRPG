@@ -1,3 +1,4 @@
+//'토스트(Toast)' 팝업 알림 시스템 훅
 "use client"
 
 // Inspired by react-hot-toast library
