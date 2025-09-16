@@ -159,6 +159,7 @@ export default function DashboardPage() {
               <h2 className="text-2xl font-semibold mb-6">{activeSection} 게임</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {themeGames.map((game) => (
+                    // 게임 카드를 클릭했을 때 이동하는 하이퍼링크 위치
                     <Link href={`/game/${game.id}`} key={game.id}>
                       <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
                         <CardHeader className="p-0">
