@@ -5,11 +5,13 @@ const dotenv = require("dotenv");
 
 const authRoutes = require("./routes/auth");
 const gameRoutes = require("./routes/game"); // 게임 API 라우터
+const ingameRoutes = require("./routes/ingame"); // 게임 API 라우터
 
 dotenv.config();
 const app = express();
 
-app.use(cors({ origin: ["http://localhost:3000"], credentials: false }));
+app.use(cors({ origin: true, credentials: true }));
+// app.use(cors({ origin: ["http://localhost:3000"], credentials: false }));
 app.use(express.json());
 
 // 기본 health check
@@ -20,6 +22,10 @@ app.use("/api/auth", authRoutes);
 
 // 게임 관련 라우터
 app.use("/api/game", gameRoutes);
+
+// 게임 관련 라우터
+app.use("/api", ingameRoutes);
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

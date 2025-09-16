@@ -223,10 +223,15 @@ export default function DashboardPage() {
     return items.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   };
 
-  const renderContent = () => {
-    switch (activeSection) {
-      case "홈":
-        return (
+  return (
+    <div className="flex min-h-screen bg-background">
+      <MainNavigation onNavItemClick={handleNavItemClick} />
+      <div className="flex-1 p-8">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">{activeSection}</h1>
+          <UserNav />
+        </div>
+        {activeSection === "홈" && (
           <>
             {/* 최근 플레이한 게임 섹션 */}
             <section className="mb-10">
@@ -255,41 +260,34 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="grid grid-cols-5 gap-4">
-                {getCurrentPageItems(recentGames, recentGamesPage).map(
-                  (game) => (
-                    <Link
-                      href={`/game/${game.id}`}
-                      key={game.id}
-                      className="block"
-                    >
-                      <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                        <CardHeader className="p-0">
-                          <div className="relative w-full h-40">
-                            <Image
-                              src={game.image || "/placeholder.svg"}
-                              alt={game.title}
-                              fill
-                              className="object-cover rounded-t-lg"
-                            />
-                          </div>
-                        </CardHeader>
-                        <CardContent className="p-4">
-                          <CardTitle className="text-lg">
-                            {game.title}
-                          </CardTitle>
-                          <CardDescription>
-                            마지막 플레이: {game.date}
-                          </CardDescription>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  )
-                )}
+                {getCurrentPageItems(recentGames, recentGamesPage).map((game) => (
+                  <Link
+                    href={`/game/${game.id}`}
+                    key={game.id}
+                    className="block"
+                  >
+                    <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
+                      <CardHeader className="p-0">
+                        <div className="relative w-full h-40">
+                          <Image
+                            src={game.image || "/placeholder.svg"}
+                            alt={game.title}
+                            fill
+                            className="object-cover rounded-t-lg"
+                          />
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-4">
+                        <CardTitle className="text-lg">{game.title}</CardTitle>
+                        <CardDescription>마지막 플레이: {game.date}</CardDescription>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
               </div>
               <div className="flex justify-center mt-2">
                 <p className="text-sm text-muted-foreground">
-                  페이지 {recentGamesPage + 1} /{" "}
-                  {Math.ceil(recentGames.length / ITEMS_PER_PAGE)}
+                  페이지 {recentGamesPage + 1} / {Math.ceil(recentGames.length / ITEMS_PER_PAGE)}
                 </p>
               </div>
             </section>
@@ -321,41 +319,34 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="grid grid-cols-5 gap-4">
-                {getCurrentPageItems(templates, templatesPage).map(
-                  (template) => (
-                    <Link
-                      href={`/template/${template.id}`}
-                      key={template.id}
-                      className="block"
-                    >
-                      <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
-                        <CardHeader className="p-0">
-                          <div className="relative w-full h-40">
-                            <Image
-                              src={template.image || "/placeholder.svg"}
-                              alt={template.title}
-                              fill
-                              className="object-cover rounded-t-lg"
-                            />
-                          </div>
-                        </CardHeader>
-                        <CardContent className="p-4">
-                          <CardTitle className="text-lg">
-                            {template.title}
-                          </CardTitle>
-                          <CardDescription>
-                            {template.description}
-                          </CardDescription>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  )
-                )}
+                {getCurrentPageItems(templates, templatesPage).map((template) => (
+                  <Link
+                    href={`/template/${template.id}`}
+                    key={template.id}
+                    className="block"
+                  >
+                    <Card className="h-full hover:bg-accent/50 transition-colors cursor-pointer">
+                      <CardHeader className="p-0">
+                        <div className="relative w-full h-40">
+                          <Image
+                            src={template.image || "/placeholder.svg"}
+                            alt={template.title}
+                            fill
+                            className="object-cover rounded-t-lg"
+                          />
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-4">
+                        <CardTitle className="text-lg">{template.title}</CardTitle>
+                        <CardDescription>{template.description}</CardDescription>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
               </div>
               <div className="flex justify-center mt-2">
                 <p className="text-sm text-muted-foreground">
-                  페이지 {templatesPage + 1} /{" "}
-                  {Math.ceil(templates.length / ITEMS_PER_PAGE)}
+                  페이지 {templatesPage + 1} / {Math.ceil(templates.length / ITEMS_PER_PAGE)}
                 </p>
               </div>
             </section>
@@ -373,10 +364,7 @@ export default function DashboardPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p>
-                    테이블탑 롤플레잉 게임(TRPG)의 기본 규칙과 플레이 방법을
-                    알아보세요.
-                  </p>
+                  <p>테이블탑 롤플레잉 게임(TRPG)의 기본 규칙과 플레이 방법을 알아보세요.</p>
                 </CardContent>
                 <CardFooter>
                   <Button variant="outline" asChild>
@@ -396,9 +384,7 @@ export default function DashboardPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p>
-                    TRPG 플랫폼의 다양한 기능과 사용 방법에 대해 알아보세요.
-                  </p>
+                  <p>TRPG 플랫폼의 다양한 기능과 사용 방법에 대해 알아보세요.</p>
                 </CardContent>
                 <CardFooter>
                   <Button variant="outline" asChild>
@@ -414,8 +400,7 @@ export default function DashboardPage() {
                 <CardHeader>
                   <CardTitle>AI 게임 마스터와 대화하기</CardTitle>
                   <CardDescription>
-                    AI 게임 마스터와 대화하여 게임 아이디어를 얻거나 규칙에 대해
-                    질문해보세요.
+                    AI 게임 마스터와 대화하여 게임 아이디어를 얻거나 규칙에 대해 질문해보세요.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -424,9 +409,9 @@ export default function DashboardPage() {
               </Card>
             </section>
           </>
-        );
-      case "판타지":
-        return (
+        )}
+
+        {activeSection === "판타지" && (
           <section>
             <h2 className="text-2xl font-semibold mb-6">판타지 게임</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -454,9 +439,9 @@ export default function DashboardPage() {
               ))}
             </div>
           </section>
-        );
-      case "SF":
-        return (
+        )}
+
+        {activeSection === "SF" && (
           <section>
             <h2 className="text-2xl font-semibold mb-6">SF 게임</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -484,9 +469,9 @@ export default function DashboardPage() {
               ))}
             </div>
           </section>
-        );
-      case "호러":
-        return (
+        )}
+
+        {activeSection === "호러" && (
           <section>
             <h2 className="text-2xl font-semibold mb-6">호러 게임</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -514,9 +499,9 @@ export default function DashboardPage() {
               ))}
             </div>
           </section>
-        );
-      case "모험":
-        return (
+        )}
+
+        {activeSection === "모험" && (
           <section>
             <h2 className="text-2xl font-semibold mb-6">모험 게임</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -544,9 +529,9 @@ export default function DashboardPage() {
               ))}
             </div>
           </section>
-        );
-      case "TRPG 가이드":
-        return (
+        )}
+
+        {activeSection === "TRPG 가이드" && (
           <section>
             <h2 className="text-2xl font-semibold mb-6">TRPG 가이드</h2>
             <Card>
@@ -585,9 +570,9 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </section>
-        );
-      case "웹사이트 사용법":
-        return (
+        )}
+
+        {activeSection === "웹사이트 사용법" && (
           <section>
             <h2 className="text-2xl font-semibold mb-6">웹사이트 사용법</h2>
             <Card>
@@ -623,26 +608,15 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </section>
-        );
-      default:
-        return (
+        )}
+
+        {/* 기본/예외 섹션 */}
+        {["홈", "판타지", "SF", "호러", "모험", "TRPG 가이드", "웹사이트 사용법"].indexOf(activeSection) === -1 && (
           <section>
             <h2 className="text-2xl font-semibold mb-6">{activeSection}</h2>
             <p>해당 섹션의 콘텐츠를 준비 중입니다.</p>
           </section>
-        );
-    }
-  };
-
-  return (
-    <div className="flex min-h-screen bg-background">
-      <MainNavigation onNavItemClick={handleNavItemClick} />
-      <div className="flex-1 p-8">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">{activeSection}</h1>
-          <UserNav />
-        </div>
-        {renderContent()}
+        )}
       </div>
     </div>
   );
