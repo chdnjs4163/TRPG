@@ -1,32 +1,21 @@
-// Description: Main server file for TRPG API with authentication and game routees
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 
-const authRoutes = require("./routes/auth");
-const gameRoutes = require("./routes/game"); // 게임 API 라우터
-const ingameRoutes = require("./routes/ingame"); // 게임 API 라우터
-
 dotenv.config();
 const app = express();
 
+// CORS 설정
 app.use(cors({ origin: true, credentials: true }));
-// app.use(cors({ origin: ["http://localhost:3000"], credentials: false }));
 app.use(express.json());
 
-// 기본 health check
+// Health check
 app.get("/", (req, res) => res.json({ ok: true, service: "TRPG API" }));
 
-// 인증 관련 라우터
-app.use("/api/auth", authRoutes);
+// 모든 라우터 통합
+app.use("/api", require("./routes"));
 
-// 게임 관련 라우터
-app.use("/api/game", gameRoutes);
-
-// 게임 관련 라우터
-app.use("/api", ingameRoutes);
-
-
+// 서버 시작
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`✅ Server running on http://localhost:${PORT}`);

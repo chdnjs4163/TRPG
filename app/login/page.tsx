@@ -24,8 +24,9 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (res.ok) {
+
         localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
+        localStorage.setItem("userId", data.userId); // 👈 반드시 저장
         window.location.href = "/";
       } else {
         setMessage(data.error || "로그인 실패");

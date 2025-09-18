@@ -92,8 +92,10 @@ router.post("/login", async (req, res) => {
 
         res.json({
             message: "로그인 성공",
-            user: { id: user.id, username: user.username, email: user.email },
-            token, // 클라이언트가 저장하여 사용
+            userId: user.id, // 추가
+            username: user.username,
+            email: user.email,
+            token
         });
     } catch (err) {
         console.error(err);
