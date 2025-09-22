@@ -21,11 +21,17 @@ router.get('/game/:gameId', async (req, res) => {
 router.post('/', async (req, res) => {
     const { game_id, name, class: charClass, level, stats, inventory } = req.body;
     try {
+        if (!game_id || !name) return error(res, 'game_id와 name은 필수입니다.', 400);
+
+        // FK 존재 확인
+        const [games] = await pool.query('SELECT game_id FROM games WHERE game_id=?', [game_id]);
+        if (!games.length) return error(res, '유효하지 않은 game_id 입니다.', 400);
+
         const [result] = await pool.query(
             'INSERT INTO characters (game_id, name, class, level, stats, inventory) VALUES (?, ?, ?, ?, ?, ?)',
-            [game_id, name, charClass, level || 1, JSON.stringify(stats || {}), JSON.stringify(inventory || [])]
+            [game_id, name, charClass || null, level || 1, JSON.stringify(stats || {}), JSON.stringify(inventory || [])]
         );
-        success(res, { character_id: result.insertId }, '캐릭터 생성 완료');
+        success(res, { character_id: result.insertId, game_id, name, class: charClass, level: level || 1 }, '캐릭터 생성 완료');
     } catch (err) {
         console.error('캐릭터 생성 오류:', err);
         error(res, '캐릭터 생성 실패');

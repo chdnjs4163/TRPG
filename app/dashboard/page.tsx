@@ -60,19 +60,19 @@ export default function DashboardPage() {
 
 
     // 최근 플레이 게임 불러오기
-    fetch(`http://localhost:5000/api/games/${userId}`, {
+    fetch(`http://localhost:5000/api/games/user/${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
         .then((res) => res.json())
-        .then((data) => setRecentGames(data || []))
+        .then((result) => setRecentGames(result?.data || []))
         .catch((err) => console.error("최근 게임 불러오기 실패:", err));
 
     // 템플릿 불러오기
-    fetch("http://localhost:5000/api/game", {
+    fetch("http://localhost:5000/api/game_titles?limit=20", {
       headers: { Authorization: `Bearer ${token}` },
     })
         .then((res) => res.json())
-        .then((data) => setTemplates(data || []))
+        .then((result) => setTemplates(result?.data || []))
         .catch((err) => console.error("템플릿 불러오기 실패:", err));
   }, []);
 

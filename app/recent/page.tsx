@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Search, Filter } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
@@ -18,66 +18,18 @@ export default function RecentPage() {
   const [selectedGenre, setSelectedGenre] = useState("all");
   const ITEMS_PER_PAGE = 8;
 
-  const recentGames = [
-    {
-      id: 1,
-      title: "던전 탐험",
-      genre: "모험",
-      image: "/images/DungeonExploration.png",
-      description: "고대 던전을 누비며 몬스터와 보물을 마주하는 클래식 모험.",
-    },
-    {
-      id: 2,
-      title: "우주 모험",
-      genre: "SF",
-      image: "/images/space_adventure.png",
-      description: "우주 정거장에서 벌어지는 사건을 해결하는 모험.",
-    },
-    {
-      id: 3,
-      title: "마법의 숲",
-      genre: "판타지",
-      image: "/images/magical_forest.png",
-      description: "신비로운 마법의 숲에서 펼쳐지는 모험.",
-    },
-    {
-      id: 4,
-      title: "사이버펑크 도시",
-      genre: "SF",
-      image: "/images/cyber-city.png",
-      description: "네온이 빛나는 사이버 도시에서 벌어지는 잠입과 수사.",
-    },
-    
-    {
-      id: 5,
-      title: "잃어버린 보물",
-      genre: "모험",
-      image: "/images/Pirate_Ship_Adventure.png",
-      description: "전설의 보물을 찾아 떠나는 항해.",
-    },
-    {
-      id: 6,
-      title: "유령의 저택",
-      genre: "호러",
-      image: "/images/got.png",
-      description: "저주받은 저택에서 벌어지는 공포의 이야기.",
-    },
-    
-    {
-      id: 7,
-      title: "드래곤 퀘스트",
-      genre: "판타지",
-      image: "/images/dragon-quest.png",
-      description: "전설의 드래곤을 찾아 떠나는 위대한 모험.",
-    },
-    {
-      id: 8,
-      title: "유령늑대와 전투",
-      genre: "호러",
-      image: "/images/wefl.png",
-      description: "유령의 기운을 두른 괴이한 늑대 무리와의 사투",
-    },
-  ];
+  const [recentGames, setRecentGames] = useState<any[]>([]);
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+    if (!userId) return;
+    fetch(`http://localhost:5000/api/games/user/${userId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.json())
+      .then(result => setRecentGames(result?.data || []))
+      .catch(e => console.error('최근 게임 불러오기 실패:', e));
+  }, []);
 
   const genres = ["all", "판타지", "SF", "호러", "모험"];
 
@@ -194,9 +146,6 @@ export default function RecentPage() {
                   <CardContent className="p-4">
                     <CardTitle className="text-lg mb-2">{game.title}</CardTitle>
                     <CardDescription className="mb-3">{game.description}</CardDescription>
-                    <div className="flex gap-2">
-                      <Badge variant="secondary">{game.genre}</Badge>
-                    </div>
                   </CardContent>
                 </Card>
               </Link>
