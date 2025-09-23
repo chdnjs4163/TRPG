@@ -1,0 +1,64 @@
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,           -- 고유 사용자 ID
+    username VARCHAR(50) UNIQUE NOT NULL,        -- 사용자명 (중복 불가)
+    password_hash VARCHAR(255) NOT NULL,         -- 암호화된 비밀번호
+    email VARCHAR(100) UNIQUE NOT NULL,          -- 이메일 (중복 불가)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP -- 가입 시간
+);
+
+
+-- 2. 게임 타이틀 (홈 화면에 보이는 마스터 데이터)
+CREATE TABLE game_titles (
+    title_id INT AUTO_INCREMENT PRIMARY KEY,
+    title_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    thumbnail_url VARCHAR(255),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. 게임 세이브 슬롯 (유저별 진행 데이터)
+CREATE TABLE games (
+    game_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    title_id INT NOT NULL,
+    slot_number INT DEFAULT 1,
+    status ENUM('ongoing','finished') DEFAULT 'ongoing',
+    last_played DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (title_id) REFERENCES game_titles(title_id) ON DELETE CASCADE
+);
+
+-- 4. 캐릭터 테이블
+CREATE TABLE characters (
+    character_id INT AUTO_INCREMENT PRIMARY KEY,
+    game_id INT NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    class VARCHAR(50),
+    level INT DEFAULT 1,
+    stats JSON,
+    inventory JSON,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (game_id) REFERENCES games(game_id) ON DELETE CASCADE
+);
+
+
+ALTER TABLE game_titles
+ADD COLUMN theme VARCHAR(50) DEFAULT 'default';
+
+
+-- 시나리오 JSON (권장): hook/role/mission 및 확장 필드 일괄 관리
+ALTER TABLE game_titles
+ADD COLUMN scenario_json JSON NULL;
+-- 5. 진행도 저장 테이블
+CREATE TABLE progress (
+    progress_id INT AUTO_INCREMENT PRIMARY KEY,
+    game_id INT NOT NULL,
+    chapter INT DEFAULT 1,
+    scene INT DEFAULT 1,
+    choices JSON,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (game_id) REFERENCES games(game_id) ON DELETE CASCADE
+);
+
+-

@@ -14,9 +14,9 @@ interface GameInfoProps {
   gameInfo: {
     id: number;
     title: string;
-    description?: string;
-    image?: string;
-    genre?: string;
+    description: string;
+    image: string;
+    genre: string;
     difficulty?: "easy" | "medium" | "hard";
     setting?: string;
     scenario?: {
@@ -50,7 +50,7 @@ export function GameInfo({ gameInfo, onStartGame, onBack }: GameInfoProps) {
     image,
     genre,
     difficulty = "medium",
-    setting = genre || "판타지 세계",
+    setting = "판타지 세계",
     scenario,
     tags,
   } = gameInfo;
@@ -58,10 +58,15 @@ export function GameInfo({ gameInfo, onStartGame, onBack }: GameInfoProps) {
   // 👇 [수정] tags가 없으면 빈 배열을 사용하도록 로직을 간소화했습니다.
   const displayTags = tags || [];
 
-  // 시나리오만 표시: DB에 존재하는 경우에만 노출, 기본 문구는 제공하지 않음
-  const scenarioHook = scenario?.hook;
-  const scenarioRole = scenario?.role;
-  const scenarioMission = scenario?.mission;
+  const scenarioHook =
+    scenario?.hook ||
+    `고요하던 ${setting}에 불길한 그림자가 드리웁니다. 이상 징후가 곳곳에서 감지됩니다.`;
+  const scenarioRole =
+    scenario?.role ||
+    `당신은 ${setting}을 지켜온 모험가로, 현지 수호자들과 협력해 위기의 근원을 추적해야 합니다.`;
+  const scenarioMission =
+    scenario?.mission ||
+    `${setting}의 중심지로 향해 위협의 근원을 밝혀내고 ${title}에 다시 평화를 되찾으세요.`;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -71,7 +76,7 @@ export function GameInfo({ gameInfo, onStartGame, onBack }: GameInfoProps) {
             <div className="flex items-center gap-4">
               <div className="relative w-20 h-20 rounded-lg overflow-hidden">
                 <Image
-                  src={image || '/placeholder.svg'}
+                  src={image}
                   alt={title}
                   fill
                   className="object-cover"
@@ -79,11 +84,9 @@ export function GameInfo({ gameInfo, onStartGame, onBack }: GameInfoProps) {
               </div>
               <div>
                 <CardTitle className="text-2xl">{title}</CardTitle>
-                {description && (
-                  <CardDescription className="text-lg mt-1">
-                    {description}
-                  </CardDescription>
-                )}
+                <CardDescription className="text-lg mt-1">
+                  {description}
+                </CardDescription>
                 <div className="flex flex-wrap gap-2 mt-3">
                   {displayTags.map((tag, idx) => (
                     <Badge key={idx} variant="outline">{tag}</Badge>
@@ -99,7 +102,6 @@ export function GameInfo({ gameInfo, onStartGame, onBack }: GameInfoProps) {
 
         <CardContent className="space-y-6 pt-6">
           {/* 시나리오 개요 */}
-          {(scenarioHook || scenarioRole || scenarioMission) && (
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -109,33 +111,26 @@ export function GameInfo({ gameInfo, onStartGame, onBack }: GameInfoProps) {
               <CardDescription>{setting}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {scenarioHook && (
-                <div>
-                  <h4 className="font-semibold mb-1">도입부 (Hook)</h4>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {scenarioHook}
-                  </p>
-                </div>
-              )}
-              {scenarioRole && (
-                <div>
-                  <h4 className="font-semibold mb-1">당신의 역할 (Your Role)</h4>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {scenarioRole}
-                  </p>
-                </div>
-              )}
-              {scenarioMission && (
-                <div>
-                  <h4 className="font-semibold mb-1">핵심 과제 (The Mission)</h4>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {scenarioMission}
-                  </p>
-                </div>
-              )}
+              <div>
+                <h4 className="font-semibold mb-1">도입부 (Hook)</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {scenarioHook}
+                </p>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-1">당신의 역할 (Your Role)</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {scenarioRole}
+                </p>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-1">핵심 과제 (The Mission)</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {scenarioMission}
+                </p>
+              </div>
             </CardContent>
           </Card>
-          )}
 
           {/* 시작 버튼 */}
           <div className="flex justify-center pt-4">
