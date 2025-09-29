@@ -5,6 +5,8 @@ import React from "react";
 import axios from "axios";
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
+import { AiWebSocketClient } from "@/lib/ws";
+import { AI_SERVER_HTTP_URL } from "@/app/config";
 
 // UI Components
 import { Button } from "@/components/ui/button";
@@ -35,7 +37,7 @@ interface Player {
   level: number;
 }
 
-const FLASK_AI_SERVICE_URL = "http://localhost:5000";
+const FLASK_AI_SERVICE_URL = AI_SERVER_HTTP_URL;
 
 export default function GamePage() {
   const searchParams = useSearchParams();
@@ -48,6 +50,8 @@ export default function GamePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [isError, setIsError] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const socketRef = useRef<AiWebSocketClient | null>(null);
 
   // 플레이어 설정 전용 useEffect
   useEffect(() => {
@@ -72,14 +76,32 @@ export default function GamePage() {
     }
   }, [searchParams]);
 
-  // AI 시나리오 로딩 전용 useEffect
+  // AI 세션 시작 + 시나리오 로딩
   useEffect(() => {
-    const fetchInitialScenario = async () => {
+    const startSessionAndFetchScenario = async () => {
       setIsLoading(true);
       try {
         const templateTitle = searchParams.get("title") || "기본 던전";
+
+        // 1) 세션 시작 (게임/유저/캐릭터 ID 전달)
+        const gameId = searchParams.get("gameId") || searchParams.get("id") || "";
+        const userId = (typeof window !== "undefined" && localStorage.getItem("userId")) || "guest";
+        const characterParam = searchParams.get("character");
+        const character = characterParam ? JSON.parse(decodeURIComponent(characterParam)) : null;
+
+        const startRes = await fetch("/api/ai/start", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ gameId, userId, characterId: character?.id ?? "unknown" }),
+        });
+        const startData = await startRes.json();
+        if (!startRes.ok) throw new Error(startData?.error || "세션 시작 실패");
+        const newSessionId: string = startData.sessionId || startData.id || String(Date.now());
+        setSessionId(newSessionId);
+
+        // 2) 초기 시나리오 요청 (AI 서버 HTTP)
         const url = `${FLASK_AI_SERVICE_URL}/api/ai/generate-scenario?timestamp=${Date.now()}`;
-        const response = await axios.post(url, { templateTitle });
+        const response = await axios.post(url, { templateTitle, sessionId: newSessionId });
         
         if (response.data) {
           setGameTitle(response.data.gameTitle);
@@ -107,15 +129,69 @@ export default function GamePage() {
         setIsLoading(false);
       }
     };
-    fetchInitialScenario();
+    startSessionAndFetchScenario();
   }, [searchParams]);
+
+  // WebSocket 연결 관리
+  useEffect(() => {
+    if (!sessionId) return;
+    const client = new AiWebSocketClient({
+      sessionId,
+      onEvent: (evt) => {
+        if (evt.type === "message") {
+          const m = evt.data;
+          if (m.kind === "chat") {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Date.now(),
+                sender: m.role === "assistant" ? "시스템" : "플레이어",
+                content: m.content,
+                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                type: m.role === "system" ? "system" : "chat",
+              },
+            ]);
+          } else if (m.kind === "image") {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Date.now(),
+                sender: "시스템",
+                content: `이미지 생성됨 (${m.mime})`,
+                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                type: "system",
+              },
+            ]);
+          }
+        }
+      },
+    });
+    client.connect();
+    socketRef.current = client;
+    return () => client.close();
+  }, [sessionId]);
 
   // 채팅 메시지 스크롤
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSendMessage = async () => { /* 메시지 전송 로직 */ };
+  const handleSendMessage = async () => {
+    const content = message.trim();
+    if (!content) return;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        sender: "플레이어",
+        content,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        type: "chat",
+      },
+    ]);
+    setMessage("");
+    socketRef.current?.sendUserMessage(content);
+  };
 
   if (isLoading) {
     return (

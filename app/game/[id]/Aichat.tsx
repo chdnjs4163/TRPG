@@ -4,10 +4,10 @@
 
 import React, { useState } from 'react';
 import axios from 'axios';
+import { AI_SERVER_HTTP_URL } from '@/app/config';
 
-// API 서버 주소
-const SPRING_BOOT_BASE_URL = 'http://localhost:8080';
-const FLASK_AI_SERVICE_URL = 'http://localhost:5000';
+// AI 서버 주소 (env에서 주입)
+const FLASK_AI_SERVICE_URL = AI_SERVER_HTTP_URL;
 
 // 채팅 메시지 타입 정의
 interface ChatMessage {
@@ -48,8 +48,8 @@ export default function AiChat() {
     setUserInput('');
 
     try {
-      // Spring Boot → Flask AI 서비스 호출
-      const response = await axios.post(`${SPRING_BOOT_BASE_URL}/api/ai/dialogue`, {
+      // 직접 AI 서버로 호출
+      const response = await axios.post(`${FLASK_AI_SERVICE_URL}/api/ai/dialogue`, {
         history: updatedHistory
       });
 
@@ -79,7 +79,7 @@ export default function AiChat() {
         if (err.response) {
           setError(`오류: ${err.response.data.error || '서버 응답 오류'}`);
         } else if (err.request) {
-          setError('네트워크 오류: 서버에 연결할 수 없습니다. Spring Boot가 실행 중인지 확인하세요.');
+          setError('네트워크 오류: AI 서버에 연결할 수 없습니다.');
         } else {
           setError('요청 설정 중 오류가 발생했습니다.');
         }
