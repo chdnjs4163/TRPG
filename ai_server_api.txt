@@ -1,0 +1,100 @@
+AI Server HTTP & WebSocket API Spec (DB read/write for progress, characters, games)
+
+Base URLs
+- HTTP: ${NEXT_PUBLIC_AI_SERVER} (fallback AI_SERVER_URL)
+- WebSocket: ${NEXT_PUBLIC_AI_SERVER_WS} (fallback: HTTP with ws://)
+
+Auth
+- Optional Bearer token via Authorization header. If not used, identify via sessionId/userId in payload.
+
+1) Session
+POST /api/session/start
+- body: { gameId: string|number, userId: string|number, characterId: string|number }
+- resp: { sessionId: string, createdAt: string }
+
+POST /api/session/end
+- body: { sessionId: string }
+- resp: { ok: true }
+
+GET /api/session/:sessionId
+- resp: { sessionId, gameId, userId, characterId, startedAt, status }
+
+2) Game Info
+GET /api/games/:gameId
+- resp: { id, title, genre, difficulty, metadata }
+
+PATCH /api/games/:gameId
+- body: { title?, genre?, difficulty?, metadata? }
+- resp: { id, ...updated }
+
+3) Character
+GET /api/characters/:characterId
+- resp: { id, userId, gameId, name, class, level, stats, inventory, avatar }
+
+PATCH /api/characters/:characterId
+- body: { name?, class?, level?, stats?, inventory?, avatar? }
+- resp: { id, ...updated }
+
+GET /api/games/:gameId/characters
+- resp: [{ id, name, class, level, avatar }]
+
+POST /api/games/:gameId/characters
+- body: { userId, name, class, level?, stats?, inventory?, avatar? }
+- resp: { id }
+
+DELETE /api/characters/:characterId
+- resp: { ok: true }
+
+4) Progress (story state, checkpoints)
+GET /api/progress/:sessionId
+- resp: { sessionId, chapter, step, checkpoints: [ { key, value, at } ], lastMessageId? }
+
+PATCH /api/progress/:sessionId
+- body: { chapter?, step?, checkpoints?: [ { key, value } ], lastMessageId? }
+- resp: { sessionId, ...updated }
+
+POST /api/progress/:sessionId/checkpoints
+- body: { key, value }
+- resp: { key, value, at }
+
+5) Logs / Messages
+GET /api/messages?sessionId=...&afterId?
+- resp: [{ id, role: 'system'|'assistant'|'user', content, type?: 'chat'|'dice'|'combat', createdAt }]
+
+POST /api/messages
+- body: { sessionId, role, content, type? }
+- resp: { id }
+
+6) Scenario / AI
+POST /api/ai/generate-scenario
+- body: { sessionId, templateTitle }
+- resp: { gameTitle, initialMessage }
+
+POST /api/ai/dialogue
+- body: { sessionId, history: [{ role, content }] }
+- resp: { aiResponse: string, audioUrl?: string }
+
+7) Images
+POST /api/ai/image
+- body: { sessionId, prompt, size?: '512x512'|'768x768', mime?: 'image/png'|'image/jpeg' }
+- resp: { id, mime, data: base64, prompt }
+
+8) WebSocket (/ws)
+Connect: /ws?sessionId=...&token?
+Client->Server messages:
+- { action: 'user_message', content }
+- { action: 'image', prompt }
+- { action: 'typing', value: boolean }
+Server->Client messages (JSON):
+- { kind: 'chat', role: 'assistant'|'system'|'user', content, timestamp }
+- { kind: 'image', mime, data, alt?, timestamp }
+- { kind: 'info', message }
+
+Errors
+- HTTP: { error: string }
+- WS: { kind: 'info', message } or close code
+
+Notes
+- All IDs can be numeric or string; server should normalize.
+- Timestamps ISO8601.
+- Consider rate limits and message size limits (>2MB suggest chunking for images).
