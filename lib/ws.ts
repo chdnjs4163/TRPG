@@ -12,6 +12,7 @@ export type AiSocketMessage =
   | { kind: "info"; message: string };
 
 export interface AiSocketOptions {
+  gameId: string;       // ✅ 추가: 네임스페이스에 필요
   sessionId: string;
   token?: string;
   onEvent?: (evt: AiSocketEvent) => void;
@@ -20,21 +21,38 @@ export interface AiSocketOptions {
 export class AiWebSocketClient {
   private socket: WebSocket | null = null;
   private options: AiSocketOptions;
+  private lastUrl: string | null = null;
 
   constructor(options: AiSocketOptions) {
     this.options = options;
   }
 
   connect(): void {
-    const url = new URL((AI_SERVER_WS_URL || "ws://localhost:1024").replace(/\/$/, "") + "/ws");
+    const baseUrl = (AI_SERVER_WS_URL || "ws://localhost:1024").replace(/\/$/, "");
+    const namespace = `/game/${this.options.gameId}`;  // ✅ 네임스페이스 적용
+    const url = new URL(baseUrl + namespace);
+
+    // 쿼리 파라미터 추가
     url.searchParams.set("sessionId", this.options.sessionId);
     if (this.options.token) url.searchParams.set("token", this.options.token);
 
-    this.socket = new WebSocket(url.toString());
+    this.lastUrl = url.toString();
+    console.log("[AiWebSocketClient] connecting to:", this.lastUrl);
 
-    this.socket.onopen = () => this.emit({ type: "open" });
-    this.socket.onclose = (e) => this.emit({ type: "close", code: e.code, reason: e.reason });
+    this.socket = new WebSocket(this.lastUrl);
+
+    this.socket.onopen = () => {
+      this.emit({ type: "message", data: { kind: "info", message: `ws_connected:${this.lastUrl}` } });
+      this.emit({ type: "open" });
+    };
+
+    this.socket.onclose = (e) => {
+      this.emit({ type: "message", data: { kind: "info", message: `ws_closed:${this.lastUrl} code=${e.code}` } });
+      this.emit({ type: "close", code: e.code, reason: e.reason });
+    };
+
     this.socket.onerror = (e) => this.emit({ type: "error", error: e });
+
     this.socket.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data as string) as AiSocketMessage;
@@ -43,6 +61,10 @@ export class AiWebSocketClient {
         this.emit({ type: "message", data: { kind: "info", message: String(e.data) } });
       }
     };
+  }
+
+  getConnectionUrl(): string | null {
+    return this.lastUrl;
   }
 
   sendUserMessage(content: string): void {
@@ -63,5 +85,3 @@ export class AiWebSocketClient {
     this.options.onEvent?.(evt);
   }
 }
-
-

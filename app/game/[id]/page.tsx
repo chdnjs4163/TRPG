@@ -164,19 +164,21 @@ export default function GamePage() {
         setSessionId(newSessionId);
 
         // 2) 초기 시나리오 요청 (AI 서버 HTTP)
-        const url = `${FLASK_AI_SERVICE_URL}/api/ai/generate-scenario?timestamp=${Date.now()}`;
-        const response = await axios.post(url, { templateTitle, sessionId: newSessionId });
+        // const url = `${FLASK_AI_SERVICE_URL}/api/ai/generate-scenario?timestamp=${Date.now()}`;
+        // const response = await axios.post(url, { templateTitle, sessionId: newSessionId });
         
-        if (response.data) {
-          setGameTitle(response.data.gameTitle);
-          setMessages([
-            {
-              id: Date.now(), sender: "시스템", content: response.data.initialMessage,
-              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-              type: "system",
-            },
-          ]);
-        } else { throw new Error("서버 응답 데이터 형식이 잘못되었습니다."); }
+        // if (response.data) {
+        //   setGameTitle(response.data.gameTitle);
+        //   setMessages([
+        //     {
+        //       id: Date.now(), sender: "시스템", content: response.data.initialMessage,
+        //       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        //       type: "system",
+        //     },
+        //   ]);
+        // } else { 
+        //   console.error("response data 확인:", response.data);
+        //   throw new Error("서버 응답 데이터 형식이 잘못되었습니다."); }
       } catch (error) {
         console.error("초기 시나리오 생성 실패:", error);
         setGameTitle("오류 발생");
