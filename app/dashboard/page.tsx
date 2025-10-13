@@ -56,6 +56,23 @@ export default function DashboardPage() {
       return;
     }
 
+    // --- userId 콘솔 출력 ---
+    console.log("로그인된 userId:", userId);
+
+    // --- 로그인 사용자 정보 가져오기 & 콘솔 출력 ---
+    fetch("http://localhost:5000/api/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+        .then(res => res.json())
+        .then(data => {
+          console.log("로그인 사용자 정보:", data); // 👈 여기서 출력
+        })
+        .catch(err => {
+          console.error("사용자 정보 조회 실패:", err);
+          localStorage.removeItem("token");
+          localStorage.removeItem("userId");
+          window.location.href = "/login";
+        });
 
 
 

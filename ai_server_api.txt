@@ -98,3 +98,187 @@ Notes
 - All IDs can be numeric or string; server should normalize.
 - Timestamps ISO8601.
 - Consider rate limits and message size limits (>2MB suggest chunking for images).
+
+한국어로 번역 AI 서버 HTTP & WebSocket API 명세
+(DB 읽기/쓰기: 진행도, 캐릭터, 게임)
+
+기본 URL
+    HTTP: ${NEXT_PUBLIC_AI_SERVER} (백업: AI_SERVER_URL)
+
+    WebSocket: ${NEXT_PUBLIC_AI_SERVER_WS} (백업: HTTP 기반 ws://)
+
+인증 (Auth)
+선택적으로 Bearer 토큰을 Authorization 헤더에 전달
+사용하지 않을 경우, sessionId / userId를 payload(body)에 포함하여 식별
+
+1) 세션 (Session)
+세션 시작
+POST /api/session/start
+
+
+body: { gameId: string|number, userId: string|number, characterId: string|number }
+
+resp: { sessionId: string, createdAt: string }
+
+세션 종료
+POST /api/session/end
+
+
+body: { sessionId: string }
+
+resp: { ok: true }
+
+세션 조회
+GET /api/session/:sessionId
+
+
+resp: { sessionId, gameId, userId, characterId, startedAt, status }
+
+2) 게임 정보 (Game Info)
+게임 조회
+GET /api/games/:gameId
+
+
+resp: { id, title, genre, difficulty, metadata }
+
+게임 수정
+PATCH /api/games/:gameId
+
+
+body: { title?, genre?, difficulty?, metadata? }
+
+resp: { id, ...updated }
+
+3) 캐릭터 (Character)
+캐릭터 조회
+GET /api/characters/:characterId
+
+
+resp: { id, userId, gameId, name, class, level, stats, inventory, avatar }
+
+캐릭터 수정
+PATCH /api/characters/:characterId
+
+
+body: { name?, class?, level?, stats?, inventory?, avatar? }
+
+resp: { id, ...updated }
+
+게임 내 캐릭터 목록
+GET /api/games/:gameId/characters
+
+
+resp: [{ id, name, class, level, avatar }]
+
+캐릭터 생성
+POST /api/games/:gameId/characters
+
+
+body: { userId, name, class, level?, stats?, inventory?, avatar? }
+
+resp: { id }
+
+캐릭터 삭제
+DELETE /api/characters/:characterId
+
+
+resp: { ok: true }
+
+4) 진행도 (Progress - 스토리 상태, 체크포인트)
+진행도 조회
+GET /api/progress/:sessionId
+
+
+resp: { sessionId, chapter, step, checkpoints: [ { key, value, at } ], lastMessageId? }
+
+진행도 수정
+PATCH /api/progress/:sessionId
+
+
+body: { chapter?, step?, checkpoints?: [ { key, value } ], lastMessageId? }
+
+resp: { sessionId, ...updated }
+
+체크포인트 추가
+POST /api/progress/:sessionId/checkpoints
+
+
+body: { key, value }
+
+resp: { key, value, at }
+
+5) 로그 / 메시지 (Logs / Messages)
+메시지 조회
+GET /api/messages?sessionId=...&afterId?
+
+
+resp: [{ id, role: 'system'|'assistant'|'user', content, type?: 'chat'|'dice'|'combat', createdAt }]
+
+메시지 생성
+POST /api/messages
+
+
+body: { sessionId, role, content, type? }
+
+resp: { id }
+
+6) 시나리오 / AI (Scenario / AI)
+시나리오 생성
+POST /api/ai/generate-scenario
+
+
+body: { sessionId, templateTitle }
+
+resp: { gameTitle, initialMessage }
+
+대화
+POST /api/ai/dialogue
+
+
+body: { sessionId, history: [{ role, content }] }
+
+resp: { aiResponse: string, audioUrl?: string }
+
+7) 이미지 (Images)
+POST /api/ai/image
+
+
+body: { sessionId, prompt, size?: '512x512'|'768x768', mime?: 'image/png'|'image/jpeg' }
+
+resp: { id, mime, data: base64, prompt }
+
+8) WebSocket (/ws)
+
+연결
+
+/ws?sessionId=...&token?
+
+클라이언트 → 서버 메시지
+
+    { action: 'user_message', content }
+
+    { action: 'image', prompt }
+
+    { action: 'typing', value: boolean }
+
+서버 → 클라이언트 메시지
+
+    { kind: 'chat', role: 'assistant'|'system'|'user', content, timestamp }
+
+    { kind: 'image', mime, data, alt?, timestamp }
+
+    { kind: 'info', message }
+
+에러 처리
+
+    HTTP: { error: string }
+
+    WebSocket: { kind: 'info', message } 또는 close code
+
+참고 (Notes)
+
+    모든 ID는 숫자/문자열 모두 가능 (서버에서 정규화)
+
+    모든 시간은 ISO8601 형식
+
+    전송 제한: 메시지/이미지가 2MB 초과 시 chunking 권장

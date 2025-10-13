@@ -1,64 +1,56 @@
+-- 1. 사용자 테이블
 CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,           -- 고유 사용자 ID
-    username VARCHAR(50) UNIQUE NOT NULL,        -- 사용자명 (중복 불가)
-    password_hash VARCHAR(255) NOT NULL,         -- 암호화된 비밀번호
-    email VARCHAR(100) UNIQUE NOT NULL,          -- 이메일 (중복 불가)
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP -- 가입 시간
+    id INT AUTO_INCREMENT PRIMARY KEY,                     -- 고유 사용자 ID
+    username VARCHAR(50) UNIQUE NOT NULL,                  -- 사용자명 (중복 불가)
+    password_hash VARCHAR(255) NOT NULL,                   -- 암호화된 비밀번호
+    email VARCHAR(100) UNIQUE NOT NULL,                    -- 이메일 (중복 불가)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP         -- 가입 시간
 );
 
-
--- 2. 게임 타이틀 (홈 화면에 보이는 마스터 데이터)
+-- 2. 게임 타이틀 테이블 (홈 화면에 보이는 마스터 데이터)
 CREATE TABLE game_titles (
-    title_id INT AUTO_INCREMENT PRIMARY KEY,
-    title_name VARCHAR(100) NOT NULL,
-    description TEXT,
-    thumbnail_url VARCHAR(255),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    title_id INT AUTO_INCREMENT PRIMARY KEY,               -- 고유 타이틀 ID
+    title_name VARCHAR(100) NOT NULL,                      -- 게임 이름
+    description TEXT,                                      -- 게임 설명
+    thumbnail_url VARCHAR(255),                            -- 썸네일 이미지 URL
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,         -- 등록 시간
+    theme VARCHAR(50) DEFAULT 'default',                   -- 테마
+    scenario_json JSON NULL                                -- 시나리오 정보 (hook/role/mission 등)
 );
 
--- 3. 게임 세이브 슬롯 (유저별 진행 데이터)
+-- 3. 게임 세이브 슬롯 테이블 (유저별 진행 데이터)
 CREATE TABLE games (
-    game_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    title_id INT NOT NULL,
-    slot_number INT DEFAULT 1,
-    status ENUM('ongoing','finished') DEFAULT 'ongoing',
-    last_played DATETIME DEFAULT CURRENT_TIMESTAMP,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    game_id INT AUTO_INCREMENT PRIMARY KEY,                -- 고유 게임 ID
+    user_id INT NOT NULL,                                  -- 사용자 ID
+    title_id INT NOT NULL,                                 -- 게임 타이틀 ID
+    slot_number INT DEFAULT 1,                             -- 슬롯 번호
+    status ENUM('ongoing','finished') DEFAULT 'ongoing',   -- 진행 상태
+    last_played DATETIME DEFAULT CURRENT_TIMESTAMP,        -- 마지막 플레이 시간
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,         -- 생성 시간
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (title_id) REFERENCES game_titles(title_id) ON DELETE CASCADE
 );
 
 -- 4. 캐릭터 테이블
 CREATE TABLE characters (
-    character_id INT AUTO_INCREMENT PRIMARY KEY,
-    game_id INT NOT NULL,
-    name VARCHAR(50) NOT NULL,
-    class VARCHAR(50),
-    level INT DEFAULT 1,
-    stats JSON,
-    inventory JSON,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    character_id INT AUTO_INCREMENT PRIMARY KEY,           -- 고유 캐릭터 ID
+    game_id INT NOT NULL,                                  -- 게임 ID
+    name VARCHAR(50) NOT NULL,                             -- 캐릭터 이름
+    class VARCHAR(50),                                     -- 직업/클래스
+    level INT DEFAULT 1,                                   -- 레벨
+    stats JSON,                                            -- 능력치 정보
+    inventory JSON,                                        -- 인벤토리 정보
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,         -- 생성 시간
     FOREIGN KEY (game_id) REFERENCES games(game_id) ON DELETE CASCADE
 );
 
-
-ALTER TABLE game_titles
-ADD COLUMN theme VARCHAR(50) DEFAULT 'default';
-
-
--- 시나리오 JSON (권장): hook/role/mission 및 확장 필드 일괄 관리
-ALTER TABLE game_titles
-ADD COLUMN scenario_json JSON NULL;
 -- 5. 진행도 저장 테이블
 CREATE TABLE progress (
-    progress_id INT AUTO_INCREMENT PRIMARY KEY,
-    game_id INT NOT NULL,
-    chapter INT DEFAULT 1,
-    scene INT DEFAULT 1,
-    choices JSON,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    progress_id INT AUTO_INCREMENT PRIMARY KEY,            -- 고유 진행도 ID
+    game_id INT NOT NULL,                                  -- 게임 ID
+    chapter INT DEFAULT 1,                                 -- 챕터 번호
+    scene INT DEFAULT 1,                                   -- 씬 번호
+    choices JSON,                                          -- 선택지 기록
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, -- 마지막 업데이트 시간
     FOREIGN KEY (game_id) REFERENCES games(game_id) ON DELETE CASCADE
 );
-
--

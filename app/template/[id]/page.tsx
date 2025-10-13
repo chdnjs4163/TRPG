@@ -50,6 +50,7 @@ export default function TemplateDetailPage() {
   useEffect(() => {
     const bootstrap = async () => {
       try {
+        console.error("template userid:",localStorage.getItem('userId') );
         const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
         if (!userId || !templateId) return;
         // 1) 해당 사용자/타이틀의 최근 슬롯 찾기
