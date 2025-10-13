@@ -89,11 +89,29 @@ export default function GamePage() {
         const characterParam = searchParams.get("character");
         const character = characterParam ? JSON.parse(decodeURIComponent(characterParam)) : null;
 
-        const startRes = await fetch("/api/ai/start", {
+        // --- 변경: 로컬에 저장된 sessionId가 있으면 사용, 없으면 새로 생성해서 바로 상태에 저장 ---
+        let initialSessionId: string | null = null;
+        if (typeof window !== "undefined") {
+          initialSessionId = localStorage.getItem("sessionId");
+          if (!initialSessionId) {
+            // 최신 브라우저: crypto.randomUUID(), 없으면 Date.now() 등으로 대체
+            initialSessionId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : `s-${Date.now()}`;
+            localStorage.setItem("sessionId", initialSessionId);
+            console.log("새 세션 ID 생성:", initialSessionId);
+          }
+          setSessionId(initialSessionId);
+          console.log("[Session] 기존 세션 ID 사용:", initialSessionId);
+        }
+
+        console.log("[Request] game_id:", gameId);
+        console.log("[Request] session_id:", initialSessionId);
+        
+        const startRes = await fetch("http://localhost:5001/api/session/create", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ gameId, userId, characterId: character?.id ?? "unknown" }),
+          body: JSON.stringify({ game_id: gameId, session_id: initialSessionId }),
         });
+        
         const startData = await startRes.json();
         if (!startRes.ok) throw new Error(startData?.error || "세션 시작 실패");
         const newSessionId: string = startData.sessionId || startData.id || String(Date.now());
