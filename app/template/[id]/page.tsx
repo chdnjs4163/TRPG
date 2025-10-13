@@ -46,36 +46,35 @@ export default function TemplateDetailPage() {
     fetchGameTemplate();
   }, [templateId]);
 
-  // --- 사용자 슬롯 조회/생성 후 캐릭터 목록 불러오기 ---
+  // --- 사용자 슬롯 조회 후 캐릭터 목록 불러오기 (생성은 실제 시작 시점으로 이동) ---
   useEffect(() => {
     const bootstrap = async () => {
       try {
         console.error("template userid:",localStorage.getItem('userId') );
         const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
         if (!userId || !templateId) return;
-        // 1) 해당 사용자/타이틀의 최근 슬롯 찾기
+        // 1) 해당 사용자/타이틀의 최근 슬롯 찾기 (생성 X)
         const found = await axios.get(`${GAMES_API_URL}/find`, { params: { user_id: userId, title_id: templateId } });
         const slot = found.data?.data || found.data;
-        let gid = slot?.id;
-        // 2) 없으면 생성
-        if (!gid) {
-          const created = await axios.post(GAMES_API_URL, { user_id: userId, title_id: Number(templateId), slot_number: 1, status: 'ongoing' });
-          gid = (created.data?.data || created.data)?.id;
+        const gid = slot?.id ?? null;
+        setGameId(gid);
+        // 2) 슬롯이 있을 때만 캐릭터 로드
+        if (gid) {
+          const resChars = await axios.get(`${CHAR_API_URL}/game/${gid}`);
+          const rows: DbCharacter[] = resChars.data?.data || resChars.data || [];
+          const uiChars: UiCharacterProfile[] = rows.map((c) => ({
+            id: c.character_id,
+            name: c.name,
+            race: "",
+            class: c.class,
+            level: c.level ?? 1,
+            avatar: "/avatars/default.png",
+            favorite: false,
+          }));
+          setExistingCharacters(uiChars);
+        } else {
+          setExistingCharacters([]);
         }
-        setGameId(gid || null);
-        // 3) 캐릭터 로드
-        const resChars = await axios.get(`${CHAR_API_URL}/game/${gid}`);
-        const rows: DbCharacter[] = resChars.data?.data || resChars.data || [];
-        const uiChars: UiCharacterProfile[] = rows.map((c) => ({
-          id: c.character_id,
-          name: c.name,
-          race: "",
-          class: c.class,
-          level: c.level ?? 1,
-          avatar: "/avatars/default.png",
-          favorite: false,
-        }));
-        setExistingCharacters(uiChars);
       } catch (err) {
         console.error('슬롯/캐릭터 초기화 실패:', err);
       } finally {
@@ -85,19 +84,30 @@ export default function TemplateDetailPage() {
     bootstrap();
   }, [templateId]);
 
+  // 실제 시작 시점에만 게임 슬롯 생성 보장
+  const ensureGameSlot = async (): Promise<number> => {
+    if (gameId) return gameId;
+    const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
+    if (!userId) throw new Error('로그인이 필요합니다.');
+    const created = await axios.post(GAMES_API_URL, { user_id: userId, title_id: Number(templateId), slot_number: 1, status: 'ongoing' });
+    const gid = (created.data?.data || created.data)?.id as number;
+    setGameId(gid);
+    return gid;
+  };
+
   // --- 캐릭터 선택 ---
-  const handleSelectCharacter = (character: UiCharacterProfile) => {
-    if (gameTemplate) {
-      router.push(`/game/${gameTemplate.id}?character=${encodeURIComponent(JSON.stringify(character))}`);
-    }
+  const handleSelectCharacter = async (character: UiCharacterProfile) => {
+    if (!gameTemplate) return;
+    await ensureGameSlot();
+    router.push(`/game/${gameTemplate.id}?character=${encodeURIComponent(JSON.stringify(character))}`);
   };
 
   // --- 캐릭터 생성 ---
   const handleCharacterCreated = async (newChar: UiCharacterProfile) => {
     try {
-      if (!gameId) throw new Error('gameId가 준비되지 않았습니다.');
+      const gid = await ensureGameSlot();
       const payload = {
-        game_id: gameId,
+        game_id: gid,
         name: newChar.name,
         class: newChar.class,
         level: newChar.level ?? 1,
@@ -140,6 +150,15 @@ export default function TemplateDetailPage() {
     else router.back();
   };
 
+  const handleStartGame = async () => {
+    try {
+      await ensureGameSlot();
+      setStep('selection');
+    } catch (e) {
+      alert('게임을 시작할 수 없습니다. 다시 로그인해 주세요.');
+    }
+  };
+
   if (loading) return <div>템플릿 정보 및 캐릭터 불러오는 중...</div>;
   if (!gameTemplate) return <div>해당 게임 템플릿이 존재하지 않습니다.</div>;
 
@@ -148,7 +167,7 @@ export default function TemplateDetailPage() {
         {step === 'info' && (
             <GameInfo
                 gameInfo={gameTemplate}
-                onStartGame={() => setStep('selection')}
+                onStartGame={handleStartGame}
                 onBack={handleCancel}
             />
         )}

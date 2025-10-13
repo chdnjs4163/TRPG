@@ -6,13 +6,49 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { UserNav } from "@/components/user-nav"
 import { Gamepad2, Search, Bell } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 
 export function Header() {
-  // 실제 구현에서는 인증 상태를 확인하는 로직이 필요합니다
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [userName, setUserName] = useState<string>("")
+  const [userEmail, setUserEmail] = useState<string>("")
+
+  useEffect(() => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+      if (!token) {
+        setIsLoggedIn(false)
+        return
+      }
+      // 토큰 존재 시 사용자 정보 조회
+      fetch("http://localhost:1024/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => res.ok ? res.json() : Promise.reject(res))
+        .then((data) => {
+          setIsLoggedIn(true)
+          const profile = data?.data || data
+          setUserName(profile?.name || profile?.username || "")
+          setUserEmail(profile?.email || "")
+        })
+        .catch(() => {
+          setIsLoggedIn(false)
+        })
+    } catch {
+      setIsLoggedIn(false)
+    }
+  }, [])
+
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem('token')
+      localStorage.removeItem('userId')
+    } finally {
+      window.location.href = "/login"
+    }
+  }
 
   return (
     <header className="sticky top-0 z-50 w-full bg-background border-b">
@@ -54,7 +90,7 @@ export function Header() {
                 </Badge>
                 <span className="sr-only">알림</span>
               </Button>
-              <UserNav />
+              <UserNav userName={userName} userEmail={userEmail} onLogout={handleLogout} />
             </>
           ) : (
             <>

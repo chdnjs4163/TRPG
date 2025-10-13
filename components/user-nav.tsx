@@ -15,22 +15,34 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { History, LogOut, Settings, User } from "lucide-react"
 
-export function UserNav() {
+interface UserNavProps {
+  userName?: string
+  userEmail?: string
+  onLogout?: () => void
+}
+
+export function UserNav({ userName, userEmail, onLogout }: UserNavProps) {
+  const displayName = userName && userName.trim().length > 0 ? userName : "플레이어"
+  const displayEmail = userEmail && userEmail.trim().length > 0 ? userEmail : ""
+  const avatarFallback = displayName.slice(0, 1).toUpperCase()
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-8 w-8">
             <AvatarImage src="/placeholder.svg?height=32&width=32" alt="프로필 이미지" />
-            <AvatarFallback>P1</AvatarFallback>
+            <AvatarFallback>{avatarFallback}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="end" forceMount>
         <DropdownMenuLabel>
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">플레이어1</p>
-            <p className="text-xs leading-none text-muted-foreground">user@example.com</p>
+            <p className="text-sm font-medium leading-none">{displayName}</p>
+            {displayEmail && (
+              <p className="text-xs leading-none text-muted-foreground">{displayEmail}</p>
+            )}
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -55,7 +67,7 @@ export function UserNav() {
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={onLogout} className="cursor-pointer">
           <LogOut className="mr-2 h-4 w-4" />
           <span>로그아웃</span>
         </DropdownMenuItem>
