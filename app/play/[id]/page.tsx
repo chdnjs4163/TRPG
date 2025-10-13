@@ -37,7 +37,7 @@ interface Player {
 }
 // ... 기타 필요한 인터페이스
 
-const FLASK_AI_SERVICE_URL = "http://localhost:5000";
+const FLASK_AI_SERVICE_URL = "http://localhost:1024";
 
 export default function GamePage() {
   const searchParams = useSearchParams();

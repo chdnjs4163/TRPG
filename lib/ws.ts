@@ -26,7 +26,7 @@ export class AiWebSocketClient {
   }
 
   connect(): void {
-    const url = new URL((AI_SERVER_WS_URL || "ws://localhost:5000").replace(/\/$/, "") + "/ws");
+    const url = new URL((AI_SERVER_WS_URL || "ws://localhost:1024").replace(/\/$/, "") + "/ws");
     url.searchParams.set("sessionId", this.options.sessionId);
     if (this.options.token) url.searchParams.set("token", this.options.token);
 

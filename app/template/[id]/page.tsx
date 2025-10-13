@@ -28,9 +28,9 @@ export default function TemplateDetailPage() {
   const [loading, setLoading] = useState(true);
   const [gameId, setGameId] = useState<number | null>(null);
 
-  const TITLES_API_URL = "http://localhost:5000/api/game_titles";
-  const GAMES_API_URL = "http://localhost:5000/api/games";
-  const CHAR_API_URL = "http://localhost:5000/api/characters";
+  const TITLES_API_URL = "http://localhost:1024/api/game_titles";
+  const GAMES_API_URL = "http://localhost:1024/api/games";
+  const CHAR_API_URL = "http://localhost:1024/api/characters";
 
   // --- 게임 템플릿 정보 불러오기 ---
   useEffect(() => {
