@@ -4,7 +4,7 @@
 import React from "react";
 import axios from "axios";
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { AiWebSocketClient } from "@/lib/ws";
 import { AI_SERVER_HTTP_URL } from "@/app/config";
 
@@ -41,6 +41,7 @@ const FLASK_AI_SERVICE_URL = AI_SERVER_HTTP_URL;
 
 export default function GamePage() {
   const searchParams = useSearchParams();
+  const params = useParams<{ id: string }>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // --- 상태 관리 ---
@@ -53,28 +54,72 @@ export default function GamePage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const socketRef = useRef<AiWebSocketClient | null>(null);
 
-  // 플레이어 설정 전용 useEffect
+  // 플레이어 설정 전용 useEffect (쿼리 캐릭터 > 로컬 저장 > 서버 캐릭터 순으로 복원)
   useEffect(() => {
+    const routeGameId = params?.id ? String(params.id) : null;
     const characterParam = searchParams.get("character");
+
+    const applyCharacter = (character: any) => {
+      if (!character) return;
+      const newPlayer: Player = {
+        id: character.id || Date.now(),
+        name: character.name,
+        role: character.class,
+        avatar: character.avatar || "/avatars/default.png",
+        health: 100, maxHealth: 100,
+        mana: character.class?.toLowerCase?.().includes("mage") ? 100 : undefined,
+        maxMana: character.class?.toLowerCase?.().includes("mage") ? 100 : undefined,
+        level: character.level || 1,
+      };
+      setPlayers([newPlayer]);
+      if (routeGameId && typeof window !== 'undefined') {
+        localStorage.setItem(`lastCharacter:${routeGameId}`, JSON.stringify(character));
+      }
+    };
+
+    // 1) 쿼리로 온 캐릭터가 있으면 그걸 사용
     if (characterParam) {
       try {
         const character = JSON.parse(decodeURIComponent(characterParam));
-        const newPlayer: Player = {
-          id: character.id || Date.now(),
-          name: character.name,
-          role: character.class,
-          avatar: character.avatar,
-          health: 100, maxHealth: 100,
-          mana: character.class.toLowerCase().includes("mage") ? 100 : undefined,
-          maxMana: character.class.toLowerCase().includes("mage") ? 100 : undefined,
-          level: character.level || 1,
-        };
-        setPlayers([newPlayer]);
+        applyCharacter(character);
+        return;
       } catch (error) {
         console.error("캐릭터 정보 파싱 실패:", error);
       }
     }
-  }, [searchParams]);
+
+    // 2) 로컬 저장된 마지막 캐릭터 사용
+    if (routeGameId && typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`lastCharacter:${routeGameId}`);
+      if (saved) {
+        try {
+          applyCharacter(JSON.parse(saved));
+          return;
+        } catch {}
+      }
+    }
+
+    // 3) 서버에서 해당 게임의 캐릭터 목록을 가져와 첫 캐릭터 사용
+    (async () => {
+      if (!routeGameId) return;
+      try {
+        const res = await axios.get(`http://localhost:1024/api/characters/game/${routeGameId}`);
+        const rows = res.data?.data || res.data || [];
+        if (Array.isArray(rows) && rows.length > 0) {
+          const c = rows[0];
+          applyCharacter({
+            id: c.character_id,
+            name: c.name,
+            class: c.class,
+            level: c.level ?? 1,
+            avatar: "/avatars/default.png",
+          });
+        }
+      } catch (e) {
+        console.warn("캐릭터 자동 복원 실패", e);
+      }
+    })();
+  }, [searchParams, params]);
 
   // AI 세션 시작 + 시나리오 로딩
   useEffect(() => {
@@ -84,7 +129,8 @@ export default function GamePage() {
         const templateTitle = searchParams.get("title") || "기본 던전";
 
         // 1) 세션 시작 (게임/유저/캐릭터 ID 전달)
-        const gameId = searchParams.get("gameId") || searchParams.get("id") || "";
+        const routeGameId = params?.id ? String(params.id) : null;
+        const gameId = routeGameId || searchParams.get("gameId") || searchParams.get("id") || "";
         const userId = (typeof window !== "undefined" && localStorage.getItem("userId")) || "guest";
         const characterParam = searchParams.get("character");
         const character = characterParam ? JSON.parse(decodeURIComponent(characterParam)) : null;

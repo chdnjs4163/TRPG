@@ -98,8 +98,9 @@ export default function TemplateDetailPage() {
   // --- 캐릭터 선택 ---
   const handleSelectCharacter = async (character: UiCharacterProfile) => {
     if (!gameTemplate) return;
-    await ensureGameSlot();
-    router.push(`/game/${gameTemplate.id}?character=${encodeURIComponent(JSON.stringify(character))}`);
+    const gid = await ensureGameSlot();
+    const query = new URLSearchParams({ character: encodeURIComponent(JSON.stringify(character)) });
+    router.push(`/game/${gid}?${query.toString()}`);
   };
 
   // --- 캐릭터 생성 ---
@@ -152,7 +153,7 @@ export default function TemplateDetailPage() {
 
   const handleStartGame = async () => {
     try {
-      await ensureGameSlot();
+      const gid = await ensureGameSlot();
       setStep('selection');
     } catch (e) {
       alert('게임을 시작할 수 없습니다. 다시 로그인해 주세요.');
