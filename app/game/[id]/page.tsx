@@ -201,20 +201,7 @@ export default function GamePage() {
   // WebSocket 연결 관리
   useEffect(() => {
     if (!sessionId) return;
-    const routeGameId = params?.id ? String(params.id) : "";
- 
-    // ✅ 디버깅: gameId 확인
-    console.log("[DEBUG] params:", params);
-    console.log("[DEBUG] routeGameId:", routeGameId);
-    console.log("[DEBUG] sessionId:", sessionId);
- 
-    if (!routeGameId) {
-      console.error("[ERROR] gameId가 비어있습니다!");
-      return;
-    }
- 
     const client = new AiWebSocketClient({
-      gameId: routeGameId,
       sessionId,
       onEvent: (evt) => {
         if (evt.type === "message") {

@@ -1,5 +1,4 @@
 import { AI_SERVER_WS_URL } from "@/app/config";
-import { io, Socket } from "socket.io-client";
 
 export type AiSocketEvent =
   | { type: "open" }
@@ -20,7 +19,7 @@ export interface AiSocketOptions {
 }
 
 export class AiWebSocketClient {
-  private socket: Socket | null = null;
+  private socket: WebSocket | null = null;
   private options: AiSocketOptions;
   private lastUrl: string | null = null;
 
@@ -29,47 +28,39 @@ export class AiWebSocketClient {
   }
 
   connect(): void {
-    const baseUrl = (AI_SERVER_WS_URL || "http://192.168.26.165:5001").replace(/\/$/, "");
-    const namespace = `/game/${this.options.gameId}`;
-    // 실제로 연결할 전체 네임스페이스 URL
-    this.lastUrl = `${baseUrl}${namespace}`;
+    const baseUrl = (AI_SERVER_WS_URL || "ws://localhost:1024").replace(/\/$/, "");
+    const namespace = `/game/${this.options.gameId}`;  // ✅ 네임스페이스 적용
+    const url = new URL(baseUrl + namespace);
+
+    // 쿼리 파라미터 추가
+    url.searchParams.set("sessionId", this.options.sessionId);
+    if (this.options.token) url.searchParams.set("token", this.options.token);
+
+    this.lastUrl = url.toString();
     console.log("[AiWebSocketClient] connecting to:", this.lastUrl);
 
-    // 클라이언트는 네임스페이스 전체 URL로 직접 연결해야 함
-    this.socket = io(this.lastUrl, {
-      path: "/socket.io", // 서버에서 커스텀 path를 사용한다면 맞춰주세요
-      transports: ["websocket"],
-      auth: { token: this.options.token },
-      query: { sessionId: this.options.sessionId },
-    });
+    this.socket = new WebSocket(this.lastUrl);
 
-    this.socket.on("connect", () => {
-      console.log("[AiWebSocketClient] connected:", this.lastUrl);
+    this.socket.onopen = () => {
       this.emit({ type: "message", data: { kind: "info", message: `ws_connected:${this.lastUrl}` } });
       this.emit({ type: "open" });
-    });
+    };
 
-    this.socket.on("disconnect", (reason: string) => {
-      this.emit({ type: "message", data: { kind: "info", message: `ws_closed:${this.lastUrl} reason=${reason}` } });
-      this.emit({ type: "close", code: 1000, reason });
-    });
+    this.socket.onclose = (e) => {
+      this.emit({ type: "message", data: { kind: "info", message: `ws_closed:${this.lastUrl} code=${e.code}` } });
+      this.emit({ type: "close", code: e.code, reason: e.reason });
+    };
 
-    this.socket.on("connect_error", (err) => {
-      this.emit({ type: "error", error: err as any });
-    });
+    this.socket.onerror = (e) => this.emit({ type: "error", error: e });
 
-    // 서버에서 보내는 이벤트 매핑
-    this.socket.on("status", (data) => {
-      this.emit({ type: "message", data: { kind: "info", message: String(data?.message ?? "status") } });
-    });
-    this.socket.on("game_response", (data) => {
-      const content = typeof data?.response === "string" ? data.response : JSON.stringify(data);
-      this.emit({ type: "message", data: { kind: "chat", role: "assistant", content } });
-    });
-    this.socket.on("message", (data) => {
-      const content = typeof data === "string" ? data : JSON.stringify(data);
-      this.emit({ type: "message", data: { kind: "info", message: content } });
-    });
+    this.socket.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data as string) as AiSocketMessage;
+        this.emit({ type: "message", data });
+      } catch {
+        this.emit({ type: "message", data: { kind: "info", message: String(e.data) } });
+      }
+    };
   }
 
   getConnectionUrl(): string | null {
@@ -77,17 +68,17 @@ export class AiWebSocketClient {
   }
 
   sendUserMessage(content: string): void {
-    if (!this.socket) return;
-    this.socket.emit("message", { message: content });
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    this.socket.send(JSON.stringify({ action: "user_message", content }));
   }
 
   requestImage(prompt: string): void {
-    if (!this.socket) return;
-    this.socket.emit("image", { prompt });
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    this.socket.send(JSON.stringify({ action: "image", prompt }));
   }
 
   close(): void {
-    this.socket?.disconnect();
+    this.socket?.close();
   }
 
   private emit(evt: AiSocketEvent) {

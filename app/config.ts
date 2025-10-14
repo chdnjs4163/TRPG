@@ -7,4 +7,3 @@ export const AI_SERVER_HTTP_URL = process.env.NEXT_PUBLIC_AI_SERVER || process.e
 // Socket.IO 클라이언트는 http(s) 스킴을 사용해도 됩니다 (내부적으로 ws 업그레이드)
 export const AI_SERVER_WS_URL = (process.env.NEXT_PUBLIC_AI_SERVER_WS || "").trim() || AI_SERVER_HTTP_URL;
 
-
