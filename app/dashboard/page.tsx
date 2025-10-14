@@ -61,7 +61,7 @@ export default function DashboardPage() {
     console.log("로그인된 userId:", userId);
 
     // --- 로그인 사용자 정보 가져오기 & 콘솔 출력 ---
-    fetch("http://http://192.168.26.165:1024/api/auth/me", {
+    fetch("http://192.168.26.165:1024/api/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
     })
         .then(res => res.json())

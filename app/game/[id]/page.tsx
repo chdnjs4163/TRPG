@@ -52,6 +52,7 @@ export default function GamePage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [isError, setIsError] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [gameId, setGameId] = useState<string | null>(null);
   const socketRef = useRef<AiWebSocketClient | null>(null);
 
   // 플레이어 설정 전용 useEffect (쿼리 캐릭터 > 로컬 저장 > 서버 캐릭터 순으로 복원)
@@ -130,8 +131,14 @@ export default function GamePage() {
 
         // 1) 세션 시작 (게임/유저/캐릭터 ID 전달)
         const routeGameId = params?.id ? String(params.id) : null;
-        const gameId = routeGameId || searchParams.get("gameId") || searchParams.get("id") || "";
-        const userId = (typeof window !== "undefined" && localStorage.getItem("userId")) || "guest";
+        const resolvedGameId =
+          routeGameId || searchParams.get("gameId") || searchParams.get("id") || "";
+        setGameId(resolvedGameId || null);
+        if (!resolvedGameId) {
+          throw new Error("game_id를 찾을 수 없습니다.");
+        }
+        const userId =
+          (typeof window !== "undefined" && localStorage.getItem("userId")) || "guest";
         const characterParam = searchParams.get("character");
         const character = characterParam ? JSON.parse(decodeURIComponent(characterParam)) : null;
 
@@ -149,13 +156,13 @@ export default function GamePage() {
           console.log("[Session] 기존 세션 ID 사용:", initialSessionId);
         }
 
-        console.log("[Request] game_id:", gameId);
+        console.log("[Request] game_id:", resolvedGameId);
         console.log("[Request] session_id:", initialSessionId);
         
         const startRes = await fetch("http://192.168.26.165:5001/api/session/create", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ game_id: gameId, session_id: initialSessionId }),
+          body: JSON.stringify({ game_id: resolvedGameId, session_id: initialSessionId }),
         });
         
         const startData = await startRes.json();
@@ -200,8 +207,9 @@ export default function GamePage() {
 
   // WebSocket 연결 관리
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !gameId) return;
     const client = new AiWebSocketClient({
+      gameId,
       sessionId,
       onEvent: (evt) => {
         if (evt.type === "message") {
@@ -235,7 +243,7 @@ export default function GamePage() {
     client.connect();
     socketRef.current = client;
     return () => client.close();
-  }, [sessionId, params]);  // ✅ params도 의존성 배열에 추가
+  }, [sessionId, gameId, params]);  // ✅ params도 의존성 배열에 추가
 
 
   // 채팅 메시지 스크롤
