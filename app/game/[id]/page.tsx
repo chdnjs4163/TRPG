@@ -103,7 +103,7 @@ export default function GamePage() {
     (async () => {
       if (!routeGameId) return;
       try {
-        const res = await axios.get(`http://localhost:1024/api/characters/game/${routeGameId}`);
+        const res = await axios.get(`http://192.168.26.165:1024/api/characters/game/${routeGameId}`);
         const rows = res.data?.data || res.data || [];
         if (Array.isArray(rows) && rows.length > 0) {
           const c = rows[0];
@@ -152,7 +152,7 @@ export default function GamePage() {
         console.log("[Request] game_id:", gameId);
         console.log("[Request] session_id:", initialSessionId);
         
-        const startRes = await fetch("http://localhost:5001/api/session/create", {
+        const startRes = await fetch("http://192.168.26.165:5001/api/session/create", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ game_id: gameId, session_id: initialSessionId }),
@@ -201,7 +201,20 @@ export default function GamePage() {
   // WebSocket 연결 관리
   useEffect(() => {
     if (!sessionId) return;
+    const routeGameId = params?.id ? String(params.id) : "";
+ 
+    // ✅ 디버깅: gameId 확인
+    console.log("[DEBUG] params:", params);
+    console.log("[DEBUG] routeGameId:", routeGameId);
+    console.log("[DEBUG] sessionId:", sessionId);
+ 
+    if (!routeGameId) {
+      console.error("[ERROR] gameId가 비어있습니다!");
+      return;
+    }
+ 
     const client = new AiWebSocketClient({
+      gameId: routeGameId,
       sessionId,
       onEvent: (evt) => {
         if (evt.type === "message") {
@@ -235,7 +248,8 @@ export default function GamePage() {
     client.connect();
     socketRef.current = client;
     return () => client.close();
-  }, [sessionId]);
+  }, [sessionId, params]);  // ✅ params도 의존성 배열에 추가
+
 
   // 채팅 메시지 스크롤
   useEffect(() => {

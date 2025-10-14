@@ -23,7 +23,7 @@ export function Header() {
         return
       }
       // 토큰 존재 시 사용자 정보 조회
-      fetch("http://localhost:1024/api/auth/me", {
+      fetch("http://192.168.26.165:1024/api/auth/me", {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((res) => res.ok ? res.json() : Promise.reject(res))

@@ -18,5 +18,5 @@ app.use("/api", require("./routes"));
 // 서버 시작
 const PORT = process.env.PORT || 1024;
 app.listen(PORT, () => {
-    console.log(`✅ Server running on http://localhost:${PORT}`);
+    console.log(`✅ Server running on http://192.168.26.165:${PORT}`);
 });
