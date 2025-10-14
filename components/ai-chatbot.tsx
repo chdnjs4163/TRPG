@@ -1,4 +1,3 @@
-// AI 챗봇 컴포넌트 - 대시보드에서 AI와 대화 지원
 "use client"
 
 import type React from "react"
@@ -9,154 +8,327 @@ import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Send, Bot } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { AI_SERVER_HTTP_URL } from "@/app/config"
+
+type MessageRole = "user" | "assistant" | "system"
+
+type AssistantOption = {
+  id: string
+  label: string
+  value: string
+}
+
+type AssistantImage = {
+  id: string
+  src: string
+  mime: string
+  filename?: string
+}
 
 type Message = {
   id: string
-  role: "user" | "assistant"
-  content: string
+  role: MessageRole
+  text?: string
   timestamp: Date
+  prompt?: string
+  options?: AssistantOption[]
+  images?: AssistantImage[]
+  status?: "normal" | "image-generating"
+  raw?: unknown
 }
 
-// 시간 표시를 클라이언트에서만 렌더링하는 컴포넌트
+type AiServerImage = {
+  filename?: string
+  data?: string
+  mime?: string
+}
+
+type AiServerOption = string | { id?: string; label?: string; value?: string; text?: string }
+
+type AiServerResponse = {
+  success?: boolean
+  message?: string
+  response?: string
+  aiResponse?: string
+  prompt?: string
+  images?: AiServerImage[]
+  options?: AiServerOption[]
+  need_image?: boolean
+  image_info?: { should_generate?: boolean; [key: string]: unknown }
+  [key: string]: unknown
+}
+
+const AI_DIALOGUE_ENDPOINT = `${AI_SERVER_HTTP_URL.replace(/\/$/, "")}/api/ai/dialogue`
+
 function TimeText({ timestamp }: { timestamp: Date }) {
-  const [time, setTime] = useState("");
+  const [time, setTime] = useState("")
   useEffect(() => {
-    setTime(timestamp.toLocaleTimeString());
-  }, [timestamp]);
-  return <p className="text-xs opacity-50 mt-1">{time}</p>;
+    setTime(timestamp.toLocaleTimeString())
+  }, [timestamp])
+  return <p className="mt-1 text-xs opacity-50">{time}</p>
 }
 
 export function AiChatbot() {
   const [messages, setMessages] = useState<Message[]>([
     {
-      id: "1",
+      id: "intro",
       role: "assistant",
-      content: "안녕하세요! TRPG 플랫폼의 AI 게임 마스터입니다. 어떤 도움이 필요하신가요?",
+      text: "안녕하세요! TRPG 어드벤처를 도와드릴 AI 게임 마스터입니다. 무엇을 도와드릴까요?",
       timestamp: new Date(),
     },
   ])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // 메시지가 추가될 때마다 스크롤을 아래로 이동
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // AI 응답 생성 함수
-  const generateAiResponse = (userMessage: string): Promise<string> => {
-    return new Promise((resolve) => {
-      // 간단한 키워드 기반 응답
-      const lowerMsg = userMessage.toLowerCase()
+  const buildHistoryForPayload = (historyMessages: Message[]) => {
+    return historyMessages
+      .filter((msg) => (msg.role === "assistant" || msg.role === "user") && (msg.text?.trim().length ?? 0) > 0)
+      .map((msg) => ({
+        role: msg.role,
+        content: msg.text,
+      }))
+  }
 
-      setTimeout(() => {
-        if (lowerMsg.includes("안녕") || lowerMsg.includes("반가워") || lowerMsg.includes("hello")) {
-          resolve("안녕하세요! 오늘 어떤 모험을 계획하고 계신가요?")
-        } else if (lowerMsg.includes("규칙") || lowerMsg.includes("룰")) {
-          resolve(
-            "TRPG의 기본 규칙은 게임 마스터(GM)가 이야기를 이끌고, 플레이어들이 캐릭터를 연기하며 주사위 굴림으로 행동의 성공 여부를 결정하는 것입니다. 더 자세한 규칙이 필요하신가요?",
-          )
-        } else if (lowerMsg.includes("주사위") || lowerMsg.includes("다이스")) {
-          resolve(
-            "TRPG에서는 D4, D6, D8, D10, D12, D20 등 다양한 주사위를 사용합니다. 주사위 굴림은 '/roll d20'과 같은 명령어로 할 수 있습니다.",
-          )
-        } else if (lowerMsg.includes("캐릭터") || lowerMsg.includes("케릭터")) {
-          resolve(
-            "캐릭터 생성은 TRPG의 중요한 부분입니다. 종족, 직업, 능력치, 배경 스토리 등을 선택하여 자신만의 캐릭터를 만들 수 있습니다. 어떤 캐릭터를 만들고 싶으신가요?",
-          )
-        } else if (lowerMsg.includes("게임") || lowerMsg.includes("플레이")) {
-          resolve(
-            "새 게임을 시작하려면 템플릿을 선택하거나 직접 세션을 만들 수 있습니다. 어떤 장르의 게임에 관심이 있으신가요? 판타지, SF, 호러 등 다양한 장르를 지원합니다.",
-          )
-        } else {
-          resolve(
-            "흥미로운 질문이네요! TRPG에 관한 더 구체적인 질문이 있으시면 언제든지 물어보세요. 게임 규칙, 캐릭터 생성, 세션 진행 등에 대해 도움을 드릴 수 있습니다.",
-          )
+  const normalizeOptions = (options: AiServerOption[] | undefined): AssistantOption[] => {
+    if (!Array.isArray(options)) return []
+    return options
+      .map((opt, index) => {
+        if (typeof opt === "string") {
+          return { id: `opt-${index}`, label: opt, value: opt }
         }
-      }, 1000) // 1초 지연으로 응답 시간 시뮬레이션
+        if (opt && typeof opt === "object") {
+          const value = typeof opt.value === "string" && opt.value.trim().length > 0 ? opt.value : opt.text
+          const label = typeof opt.label === "string" && opt.label.trim().length > 0 ? opt.label : value
+          if (typeof value === "string" && value.trim().length > 0) {
+            return {
+              id: opt.id || `opt-${index}`,
+              label: label || value,
+              value,
+            }
+          }
+        }
+        return null
+      })
+      .filter((opt): opt is AssistantOption => opt !== null)
+  }
+
+  const normalizeImages = (images: AiServerImage[] | undefined): AssistantImage[] => {
+    if (!Array.isArray(images)) return []
+    return images
+      .map((img, index) => {
+        if (!img || typeof img !== "object") return null
+        const { data, mime } = img
+        if (typeof data !== "string" || data.trim().length === 0) return null
+        const safeMime = typeof mime === "string" && mime.trim().length > 0 ? mime : "image/png"
+        return {
+          id: img.filename || `image-${index}`,
+          src: `data:${safeMime};base64,${data}`,
+          mime: safeMime,
+          filename: img.filename,
+        }
+      })
+      .filter((img): img is AssistantImage => img !== null)
+  }
+
+  const extractAssistantText = (payload: AiServerResponse): string => {
+    const candidates = [payload.response, payload.message, payload.aiResponse]
+    for (const text of candidates) {
+      if (typeof text === "string" && text.trim().length > 0) {
+        return text
+      }
+    }
+    return ""
+  }
+
+  const createAssistantMessage = (payload: AiServerResponse): Message => {
+    const text = extractAssistantText(payload)
+    const options = normalizeOptions(payload.options)
+    const images = normalizeImages(payload.images)
+
+    const shouldShowImagePlaceholder =
+      payload.need_image === true &&
+      !!payload.image_info &&
+      typeof payload.image_info === "object" &&
+      (payload.image_info as { should_generate?: boolean }).should_generate === true &&
+      images.length === 0
+
+    return {
+      id: `assistant-${Date.now()}`,
+      role: "assistant",
+      text: text || (shouldShowImagePlaceholder ? "이미지 생성 중입니다." : ""),
+      timestamp: new Date(),
+      prompt: typeof payload.prompt === "string" && payload.prompt.trim().length > 0 ? payload.prompt : undefined,
+      options: options.length > 0 ? options : undefined,
+      images: images.length > 0 ? images : undefined,
+      status: shouldShowImagePlaceholder ? "image-generating" : "normal",
+      raw: payload,
+    }
+  }
+
+  const sendToAiServer = async (body: Record<string, unknown>) => {
+    console.log("[AiChatbot] Sending request to AI server:", body)
+    const res = await fetch(AI_DIALOGUE_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
     })
+    const data = (await res.json().catch(() => ({}))) as AiServerResponse
+    console.log("[AiChatbot] Raw response from AI server:", data)
+    if (!res.ok) {
+      throw new Error(data?.message || data?.error || "AI server error")
+    }
+    return data
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const trimmed = input.trim()
+    if (!trimmed) return
 
-    if (!input.trim()) return
+    console.log("[AiChatbot] Submit triggered with:", trimmed)
 
-    // 사용자 메시지 추가
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user-${Date.now()}`,
       role: "user",
-      content: input,
+      text: trimmed,
       timestamp: new Date(),
     }
+
+    const historyForPayload = buildHistoryForPayload([...messages, userMessage])
 
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
 
     try {
-      // AI 응답 생성
-      const aiResponse = await generateAiResponse(input)
-
-      // AI 메시지 추가
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: aiResponse,
-        timestamp: new Date(),
+      const payload = {
+        message: trimmed,
+        history: historyForPayload,
       }
-
+      const response = await sendToAiServer(payload)
+      const assistantMessage = createAssistantMessage(response)
       setMessages((prev) => [...prev, assistantMessage])
     } catch (error) {
-      console.error("Error generating AI response:", error)
+      console.error("[AiChatbot] Failed to fetch AI response:", error)
+      const errorMessage: Message = {
+        id: `error-${Date.now()}`,
+        role: "system",
+        text: error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
     } finally {
+      console.log("[AiChatbot] Request cycle finished")
       setIsLoading(false)
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+      }
+    }
+  }
+
+  const handleOptionClick = (value: string) => {
+    console.log("[AiChatbot] Option selected:", value)
+    setInput(value)
+    if (textareaRef.current) {
+      textareaRef.current.focus()
     }
   }
 
   return (
-    <div className="flex flex-col h-[500px]">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 border rounded-md mb-4">
+    <div className="flex h-[520px] flex-col">
+      <div className="mb-4 flex-1 space-y-4 overflow-y-auto rounded-md border p-4">
         {messages.map((message) => (
-          <div key={message.id} className={cn("flex gap-3 max-w-[80%]", message.role === "user" ? "ml-auto" : "")}>
-            {message.role === "assistant" && (
+          <div
+            key={message.id}
+            className={cn("flex max-w-[80%] gap-3", message.role === "user" ? "ml-auto flex-row-reverse" : "")}
+          >
+            {message.role !== "user" ? (
               <Avatar className="h-8 w-8">
                 <AvatarImage src="/placeholder.svg?height=32&width=32" />
                 <AvatarFallback>
                   <Bot className="h-4 w-4" />
                 </AvatarFallback>
               </Avatar>
-            )}
-            <div
-              className={cn(
-                "rounded-lg p-3",
-                message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted",
-              )}
-            >
-              <p>{message.content}</p>
-              <TimeText timestamp={message.timestamp} />
-            </div>
-            {message.role === "user" && (
+            ) : (
               <Avatar className="h-8 w-8">
                 <AvatarImage src="/placeholder.svg?height=32&width=32" />
                 <AvatarFallback>U</AvatarFallback>
               </Avatar>
             )}
+            <div
+              className={cn(
+                "min-w-0 rounded-lg p-3",
+                message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
+              )}
+            >
+              {message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>}
+
+              {message.prompt && (
+                <p className="mt-2 text-xs text-muted-foreground">프롬프트: {message.prompt}</p>
+              )}
+
+              {message.status === "image-generating" && (
+                <div className="mt-3 rounded-md border border-dashed border-muted-foreground/50 bg-muted-foreground/10 px-4 py-6 text-center text-sm text-muted-foreground">
+                  이미지 생성 중입니다...
+                </div>
+              )}
+
+              {message.images && message.images.length > 0 && (
+                <div className="mt-3 grid gap-3">
+                  {message.images.map((img) => (
+                    <div key={img.id} className="overflow-hidden rounded-md border bg-background">
+                      <img src={img.src} alt={img.filename || "AI generated"} className="h-auto w-full object-cover" />
+                      {img.filename && (
+                        <p className="px-3 py-2 text-xs text-muted-foreground">파일명: {img.filename}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {message.options && message.options.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {message.options.map((opt) => (
+                    <Button
+                      key={opt.id}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleOptionClick(opt.value)}
+                      disabled={isLoading}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              <TimeText timestamp={message.timestamp} />
+            </div>
           </div>
         ))}
         <div ref={messagesEndRef} />
       </div>
       <form onSubmit={handleSubmit} className="flex gap-2">
         <Textarea
+          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="메시지를 입력하세요..."
+          placeholder="메시지를 입력해 주세요..."
           className="min-h-[60px] flex-1"
+          disabled={isLoading}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault()
-              handleSubmit(e)
+              if (!isLoading) {
+                handleSubmit(e)
+              }
             }
           }}
         />
