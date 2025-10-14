@@ -1,5 +1,5 @@
 "use client"
-
+// 이거 적용해보자..
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
