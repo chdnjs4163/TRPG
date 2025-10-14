@@ -52,7 +52,7 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    fetch(`http://localhost:1024/api/game_titles?limit=100`, {
+    fetch(`http://192.168.26.165:1024/api/game_titles?limit=100`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((r) => r.json())

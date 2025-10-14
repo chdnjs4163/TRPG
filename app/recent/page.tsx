@@ -23,7 +23,7 @@ export default function RecentPage() {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
     if (!userId) return;
-    fetch(`http://localhost:1024/api/games/user/${userId}`, {
+    fetch(`http://192.168.26.165:1024/api/games/user/${userId}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then(r => r.json())

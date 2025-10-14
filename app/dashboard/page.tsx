@@ -60,7 +60,7 @@ export default function DashboardPage() {
     console.log("로그인된 userId:", userId);
 
     // --- 로그인 사용자 정보 가져오기 & 콘솔 출력 ---
-    fetch("http://localhost:1024/api/auth/me", {
+    fetch("http://http://192.168.26.165:1024/api/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
     })
         .then(res => res.json())
@@ -77,7 +77,7 @@ export default function DashboardPage() {
 
 
     // 최근 플레이 게임 불러오기
-    fetch(`http://localhost:1024/api/games/user/${userId}`, {
+    fetch(`http://192.168.26.165:1024/api/games/user/${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
         .then((res) => res.json())
@@ -85,7 +85,7 @@ export default function DashboardPage() {
         .catch((err) => console.error("최근 게임 불러오기 실패:", err));
 
     // 템플릿 불러오기
-    fetch("http://localhost:1024/api/game_titles?limit=20", {
+    fetch("http://192.168.26.165:1024/api/game_titles?limit=20", {
       headers: { Authorization: `Bearer ${token}` },
     })
         .then((res) => res.json())
