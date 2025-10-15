@@ -19,13 +19,38 @@ POST /api/session/end
 GET /api/session/:sessionId
 - resp: { sessionId, gameId, userId, characterId, startedAt, status }
 
-2) Game Info
-GET /api/games/:gameId
-- resp: { id, title, genre, difficulty, metadata }
+2) Game Titles
+GET /api/game_titles
+- query?: theme, limit
+- resp: [{ id, title, description, image, genre, date, scenario? }]
 
-PATCH /api/games/:gameId
-- body: { title?, genre?, difficulty?, metadata? }
-- resp: { id, ...updated }
+POST /api/game_titles
+- body: { title: string, description?, image?, genre?, scenario?: { hook?, role?, mission? } }
+- resp: { id, title, description, image, genre, date, scenario? }
+
+GET /api/game_titles/:titleId
+- resp: { id, title, description, image, genre, date, scenario? }
+
+PATCH /api/game_titles/:titleId
+- body: { title?, description?, image?, genre?, scenario? }
+- resp: { id, title, description, image, genre, date, scenario? }
+
+DELETE /api/game_titles/:titleId
+- resp: { ok: true }
+
+GET /api/games/:gameId/title
+- resp: { id, title, description, image, genre, date, scenario? }
+
+POST /api/games/:gameId/title
+- body: { title: string, description?, image?, genre?, scenario?: { hook?, role?, mission? } }
+- resp: { id, title, description, image, genre, date, scenario? }
+
+PATCH /api/games/:gameId/title
+- body: { title?, description?, image?, genre?, scenario? }
+- resp: { id, title, description, image, genre, date, scenario? }
+
+DELETE /api/games/:gameId/title
+- resp: { ok: true }
 
 3) Character
 GET /api/characters/:characterId
@@ -36,7 +61,7 @@ PATCH /api/characters/:characterId
 - resp: { id, ...updated }
 
 GET /api/games/:gameId/characters
-- resp: [{ id, name, class, level, avatar }]
+- resp: [{ id, userId, gameId, name, class, level, stats, inventory, avatar, createdAt, updatedAt }]
 
 POST /api/games/:gameId/characters
 - body: { userId, name, class, level?, stats?, inventory?, avatar? }
@@ -134,20 +159,70 @@ GET /api/session/:sessionId
 
 resp: { sessionId, gameId, userId, characterId, startedAt, status }
 
-2) 게임 정보 (Game Info)
-게임 조회
-GET /api/games/:gameId
+2) 게임 타이틀 (Game Titles)
+타이틀 목록 조회
+GET /api/game_titles
 
 
-resp: { id, title, genre, difficulty, metadata }
+query?: theme, limit
 
-게임 수정
-PATCH /api/games/:gameId
+resp: [{ id, title, description, image, genre, date, scenario? }]
+
+타이틀 생성
+POST /api/game_titles
 
 
-body: { title?, genre?, difficulty?, metadata? }
+body: { title: string, description?, image?, genre?, scenario?: { hook?, role?, mission? } }
 
-resp: { id, ...updated }
+resp: { id, title, description, image, genre, date, scenario? }
+
+타이틀 단일 조회
+GET /api/game_titles/:titleId
+
+
+resp: { id, title, description, image, genre, date, scenario? }
+
+타이틀 수정
+PATCH /api/game_titles/:titleId
+
+
+body: { title?, description?, image?, genre?, scenario? }
+
+resp: { id, title, description, image, genre, date, scenario? }
+
+타이틀 삭제
+DELETE /api/game_titles/:titleId
+
+
+resp: { ok: true }
+
+게임 ID 기반 타이틀 조회
+GET /api/games/:gameId/title
+
+
+resp: { id, title, description, image, genre, date, scenario? }
+
+게임 ID 기반 타이틀 생성
+POST /api/games/:gameId/title
+
+
+body: { title: string, description?, image?, genre?, scenario?: { hook?, role?, mission? } }
+
+resp: { id, title, description, image, genre, date, scenario? }
+
+게임 ID 기반 타이틀 수정
+PATCH /api/games/:gameId/title
+
+
+body: { title?, description?, image?, genre?, scenario? }
+
+resp: { id, title, description, image, genre, date, scenario? }
+
+게임 ID 기반 타이틀 삭제
+DELETE /api/games/:gameId/title
+
+
+resp: { ok: true }
 
 3) 캐릭터 (Character)
 캐릭터 조회
@@ -168,7 +243,7 @@ resp: { id, ...updated }
 GET /api/games/:gameId/characters
 
 
-resp: [{ id, name, class, level, avatar }]
+resp: [{ id, userId, gameId, name, class, level, stats, inventory, avatar, createdAt, updatedAt }]
 
 캐릭터 생성
 POST /api/games/:gameId/characters

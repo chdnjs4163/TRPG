@@ -5,7 +5,7 @@ import React from "react";
 import axios from "axios";
 import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { AiWebSocketClient } from "@/lib/ws";
+import { AiWebSocketClient, type AiServerResponse } from "@/lib/ws";
 import { AI_SERVER_HTTP_URL } from "@/app/config";
 
 // UI Components
@@ -18,12 +18,23 @@ import { Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // --- 인터페이스 정의 ---
+interface MessageImage {
+  id: string;
+  dataUrl: string;
+  mime: string;
+  filename?: string;
+}
+
 interface Message {
   id: number;
   sender: string;
   content: string;
   timestamp: string;
-  type?: "system" | "chat" | "dice" | "combat";
+  type?: "system" | "chat" | "dice" | "combat" | "status";
+  images?: MessageImage[];
+  status?: "image-generating";
+  prompt?: string;
+  options?: string[];
 }
 interface Player {
   id: number;
@@ -38,6 +49,7 @@ interface Player {
 }
 
 const FLASK_AI_SERVICE_URL = AI_SERVER_HTTP_URL;
+const IMAGE_WAIT_TIMEOUT_MS = 90000;
 
 export default function GamePage() {
   const searchParams = useSearchParams();
@@ -50,10 +62,88 @@ export default function GamePage() {
   const [gameTitle, setGameTitle] = useState("시나리오 생성 중...");
   const [messages, setMessages] = useState<Message[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [isError, setIsError] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [gameId, setGameId] = useState<string | null>(null);
+  const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
+  const [activeOptions, setActiveOptions] = useState<string[]>([]);
   const socketRef = useRef<AiWebSocketClient | null>(null);
+  const imageWaitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingImagePromptRef = useRef<string | null>(null);
+
+  const clearImageWait = () => {
+    if (imageWaitRef.current) {
+      clearTimeout(imageWaitRef.current);
+      imageWaitRef.current = null;
+    }
+    pendingImagePromptRef.current = null;
+  };
+
+  useEffect(() => {
+    return () => {
+      clearImageWait();
+    };
+  }, []);
+
+  const buildTimestamp = () =>
+    new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const extractTextFromPayload = (payload: AiServerResponse): string => {
+    const candidates = [payload.response, payload.message, payload.aiResponse];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim().length > 0) {
+        return candidate.trim();
+      }
+    }
+    return "";
+  };
+
+  const normalizeImagesFromPayload = (payload: AiServerResponse): MessageImage[] => {
+    if (!Array.isArray(payload.images)) return [];
+    return payload.images
+      .map((img, index) => {
+        if (!img || typeof img !== "object") return null;
+        const { data, mime, filename } = img as { data: string; mime?: string; filename?: string };
+        if (typeof data !== "string" || data.trim().length === 0) return null;
+        const safeMime = typeof mime === "string" && mime.trim().length > 0 ? mime : "image/png";
+        const cleanBase64 = data.replace(/\s+/g, "");
+        if (cleanBase64.length === 0) return null;
+        console.log(
+          "[GamePage] 이미지 데이터 정리:",
+          filename || `image-${index}`,
+          "원본 길이:",
+          data.length,
+          "정리 후 길이:",
+          cleanBase64.length,
+        );
+        return {
+          id: filename || `image-${Date.now()}-${index}`,
+          dataUrl: `data:${safeMime};base64,${cleanBase64}`,
+          mime: safeMime,
+          filename,
+        };
+      })
+      .filter((img): img is MessageImage => img !== null);
+  };
+
+  const normalizeOptionsFromPayload = (payload: AiServerResponse): string[] => {
+    if (!Array.isArray(payload.options)) return [];
+    return payload.options
+      .map((opt) => {
+        if (typeof opt === "string") {
+          const trimmed = opt.trim();
+          return trimmed.length > 0 ? trimmed : null;
+        }
+        if (opt && typeof opt === "object") {
+          const maybe =
+            (typeof opt.value === "string" && opt.value.trim().length > 0 && opt.value.trim()) ||
+            (typeof opt.label === "string" && opt.label.trim().length > 0 && opt.label.trim()) ||
+            (typeof opt.text === "string" && opt.text.trim().length > 0 && opt.text.trim());
+          return maybe || null;
+        }
+        return null;
+      })
+      .filter((opt): opt is string => opt !== null);
+  };
 
   // 플레이어 설정 전용 useEffect (쿼리 캐릭터 > 로컬 저장 > 서버 캐릭터 순으로 복원)
   useEffect(() => {
@@ -179,7 +269,7 @@ export default function GamePage() {
         //   setMessages([
         //     {
         //       id: Date.now(), sender: "시스템", content: response.data.initialMessage,
-        //       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        //       timestamp: buildTimestamp(),
         //       type: "system",
         //     },
         //   ]);
@@ -193,11 +283,10 @@ export default function GamePage() {
           {
             id: Date.now(), sender: "시스템",
             content: "시나리오를 불러오는 데 실패했습니다. 서버 상태를 확인해주세요.",
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            timestamp: buildTimestamp(),
             type: "system",
           },
         ]);
-        setIsError(true);
       } finally {
         setIsLoading(false);
       }
@@ -212,31 +301,199 @@ export default function GamePage() {
       gameId,
       sessionId,
       onEvent: (evt) => {
-        if (evt.type === "message") {
-          const m = evt.data;
-          if (m.kind === "chat") {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: Date.now(),
-                sender: m.role === "assistant" ? "시스템" : "플레이어",
-                content: m.content,
-                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-                type: m.role === "system" ? "system" : "chat",
-              },
-            ]);
-          } else if (m.kind === "image") {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: Date.now(),
-                sender: "시스템",
-                content: `이미지 생성됨 (${m.mime})`,
-                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-                type: "system",
-              },
-            ]);
+        if (evt.type !== "message") return;
+        const m = evt.data;
+        if (m.kind === "ai_response") {
+          const payload: AiServerResponse = m.payload || {};
+          console.log("[GamePage] AI 응답 수신:", payload);
+
+          const timestamp = buildTimestamp();
+          const text = extractTextFromPayload(payload);
+          const images = normalizeImagesFromPayload(payload);
+          const options = normalizeOptionsFromPayload(payload);
+          const hasOptions = options.length > 0;
+          if (hasOptions) {
+            console.log("[GamePage] 옵션 정리 결과:", options);
           }
+
+          const incomingPrompt =
+            typeof payload.prompt === "string" && payload.prompt.trim().length > 0
+              ? payload.prompt.trim()
+              : undefined;
+          const shouldShowImagePlaceholder =
+            payload.need_image === true &&
+            !!payload.image_info &&
+            typeof payload.image_info === "object" &&
+            (payload.image_info as { should_generate?: boolean }).should_generate === true &&
+            images.length === 0;
+
+          let promptKey: string | null = incomingPrompt ?? pendingImagePromptRef.current ?? null;
+          const pendingBefore = pendingImagePromptRef.current;
+          let keepAwaiting = false;
+
+          if (images.length > 0) {
+            console.log("[GamePage] 이미지 응답 도착, 대기 해제");
+            clearImageWait();
+            if (!promptKey && pendingBefore) {
+              promptKey = pendingBefore;
+            }
+            keepAwaiting = false;
+          } else if (shouldShowImagePlaceholder) {
+            const key = incomingPrompt || `__pending_${Date.now()}`;
+            pendingImagePromptRef.current = key;
+            promptKey = key;
+            keepAwaiting = true;
+            if (imageWaitRef.current) {
+              clearTimeout(imageWaitRef.current);
+            }
+            imageWaitRef.current = setTimeout(() => {
+              console.warn("[GamePage] 이미지 응답 대기 타임아웃이 발생했습니다.");
+              imageWaitRef.current = null;
+              pendingImagePromptRef.current = null;
+              setIsAwaitingResponse(false);
+            }, IMAGE_WAIT_TIMEOUT_MS);
+          } else {
+            clearImageWait();
+            if (!promptKey && pendingBefore) {
+              promptKey = pendingBefore;
+            }
+            keepAwaiting = false;
+          }
+
+          setMessages((prev) => {
+            const next = [...prev];
+            const baseId = Date.now();
+            let offset = 0;
+            const nextId = () => baseId + offset++;
+
+            const findTargetIndex = () => {
+              for (let i = next.length - 1; i >= 0; i--) {
+                const candidate = next[i];
+                if (candidate.sender !== "시스템") continue;
+                if (promptKey) {
+                  if (candidate.prompt === promptKey) return i;
+                } else {
+                  return i;
+                }
+              }
+              return -1;
+            };
+
+            const messagePrompt = promptKey ?? incomingPrompt;
+            let targetIndex = findTargetIndex();
+
+            if (targetIndex === -1) {
+              const initialContent =
+                text.length > 0
+                  ? text
+                  : shouldShowImagePlaceholder
+                    ? "이미지 생성 중입니다."
+                    : images.length > 0
+                      ? "생성된 이미지가 도착했습니다."
+                      : "";
+              const newMessage: Message = {
+                id: nextId(),
+                sender: "시스템",
+                content: initialContent,
+                timestamp,
+                type: "chat",
+              };
+              if (messagePrompt) newMessage.prompt = messagePrompt;
+              if (shouldShowImagePlaceholder) newMessage.status = "image-generating";
+              if (images.length > 0) {
+                newMessage.images = [...images];
+                console.log(
+                  "[GamePage] 새 메시지에 이미지 추가:",
+                  images.map((img) => img.filename || img.id),
+                );
+              }
+              if (hasOptions) newMessage.options = options;
+              next.push(newMessage);
+              console.log("[GamePage] 새 시스템 메시지 생성:", newMessage);
+            } else {
+              const original = next[targetIndex];
+              const updated: Message = {
+                ...original,
+                timestamp,
+                sender: "시스템",
+                type: "chat",
+              };
+              if (messagePrompt && !updated.prompt) {
+                updated.prompt = messagePrompt;
+              }
+              if (text.length > 0) {
+                const existing = (updated.content ?? "").trim();
+                updated.content = existing.length > 0 ? `${existing}\n\n${text}` : text;
+              } else if (
+                (!updated.content || updated.content.trim().length === 0) &&
+                shouldShowImagePlaceholder
+              ) {
+                updated.content = "이미지 생성 중입니다.";
+              }
+
+              if (shouldShowImagePlaceholder) {
+                updated.status = "image-generating";
+              } else if (images.length > 0) {
+                delete updated.status;
+              }
+
+              if (images.length > 0) {
+                const mergedImages = [...(updated.images ?? [])];
+                for (const image of images) {
+                  mergedImages.push(image);
+                  console.log("[GamePage] 이미지 추가:", image.filename || image.id);
+                }
+                updated.images = mergedImages;
+                updated.status = undefined;
+                updated.content = updated.content?.replace("이미지 생성 중입니다.", "").trim() || "";
+              }
+
+              if (hasOptions) {
+                updated.options = options;
+              } else if (updated.options) {
+                delete updated.options;
+              }
+
+              next[targetIndex] = updated;
+              console.log("[GamePage] 시스템 메시지 업데이트:", updated);
+            }
+
+            return next;
+          });
+
+          setActiveOptions(hasOptions ? options : []);
+          setIsAwaitingResponse(keepAwaiting);
+          return;
+        }
+
+        if (m.kind === "chat") {
+          if (m.role === "assistant") {
+            setIsAwaitingResponse(false);
+          }
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now(),
+              sender: m.role === "assistant" ? "시스템" : "플레이어",
+              content: m.content,
+              timestamp: buildTimestamp(),
+              type: m.role === "system" ? "system" : "chat",
+            },
+          ]);
+        } else if (m.kind === "image") {
+          setIsAwaitingResponse(false);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now(),
+              sender: "시스템",
+              content: `이미지 생성됨 (${m.mime})`,
+              timestamp: buildTimestamp(),
+              type: "system",
+            },
+          ]);
+        } else if (m.kind === "info") {
+          console.log("[GamePage] WebSocket info:", m.message);
         }
       },
     });
@@ -251,21 +508,85 @@ export default function GamePage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSendMessage = async () => {
+  const isSendDisabled = isAwaitingResponse || message.trim().length === 0;
+
+  const sendChatMessage = (content: string) => {
+    if (isAwaitingResponse) {
+      console.warn("[GamePage] AI 응답 대기 중이라 메시지를 전송할 수 없습니다.");
+      return;
+    }
+
+    const trimmed = content.trim();
+    if (!trimmed) return;
+
+    const userTimestamp = buildTimestamp();
+    const userMessage: Message = {
+      id: Date.now(),
+      sender: "플레이어",
+      content: trimmed,
+      timestamp: userTimestamp,
+      type: "chat",
+    };
+
+    console.log("[GamePage] 플레이어 메시지 전송:", trimmed);
+    setMessages((prev) => {
+      const cleaned = prev.map((msg) =>
+        msg.options && msg.options.length > 0 ? { ...msg, options: undefined } : msg,
+      );
+      return [...cleaned, userMessage];
+    });
+    setActiveOptions([]);
+    setMessage("");
+    setIsAwaitingResponse(true);
+    clearImageWait();
+
+    const client = socketRef.current;
+    if (!client) {
+      console.error("[GamePage] WebSocket 클라이언트가 초기화되지 않았습니다.");
+      setIsAwaitingResponse(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          sender: "시스템",
+          content: "AI 서버에 연결되어 있지 않습니다.",
+          timestamp: buildTimestamp(),
+          type: "system",
+        },
+      ]);
+      return;
+    }
+
+    const sent = client.sendUserMessage(trimmed);
+    if (!sent) {
+      console.error("[GamePage] 소켓 전송에 실패했습니다. 연결 상태를 확인해주세요.");
+      setIsAwaitingResponse(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 2,
+          sender: "시스템",
+          content: "메시지를 전송하지 못했습니다. 연결 상태를 확인하세요.",
+          timestamp: buildTimestamp(),
+          type: "system",
+        },
+      ]);
+    }
+  };
+
+  const handleSendMessage = () => {
     const content = message.trim();
     if (!content) return;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        sender: "플레이어",
-        content,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        type: "chat",
-      },
-    ]);
-    setMessage("");
-    socketRef.current?.sendUserMessage(content);
+    sendChatMessage(content);
+  };
+
+  const handleOptionClick = (option: string) => {
+    if (isAwaitingResponse) {
+      console.warn("[GamePage] 응답 대기 중에는 옵션을 선택할 수 없습니다.");
+      return;
+    }
+    console.log("[GamePage] 옵션 선택:", option);
+    sendChatMessage(option);
   };
 
   if (isLoading) {
@@ -304,27 +625,116 @@ export default function GamePage() {
         </div>
       </aside>
       
-      {/* [핵심 수정] isError 여부와 관계없이 항상 동일한 레이아웃을 사용합니다. */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* 상단 제목 영역 */}
-        <div className="h-1/2 border-b p-4 flex items-end bg-black/10">
+        <div className="shrink-0 border-b p-4 bg-black/10">
           <h3 className="text-2xl font-bold text-foreground">{gameTitle}</h3>
         </div>
 
         {/* 하단 채팅 영역 */}
-        <div className="h-1/2 flex flex-col overflow-hidden p-4">
-          <div className="flex flex-col justify-end flex-1 overflow-y-auto space-y-4 mb-4">
-            {messages.map((msg) => (
-              <div key={msg.id} className={cn("flex items-start gap-3 max-w-[85%]", msg.sender !== "시스템" ? "ml-auto flex-row-reverse" : "mr-auto")}>
-                <Avatar className="h-8 w-8"><AvatarImage src={msg.sender === "시스템" ? undefined : players.find((p) => p.name === msg.sender)?.avatar} /><AvatarFallback>{msg.sender[0]}</AvatarFallback></Avatar>
-                <div className={cn("rounded-lg p-3", msg.sender !== "시스템" ? "bg-primary text-primary-foreground" : "bg-muted")}><p className="text-sm font-medium mb-1">{msg.sender}</p><p className="whitespace-pre-wrap">{msg.content}</p></div>
-              </div>
-            ))}
+        <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
+          <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+            {messages.map((msg) => {
+              const isSystem = msg.sender === "시스템";
+              const bubbleClass = cn(
+                "rounded-lg p-3 w-full max-w-xl",
+                isSystem ? "bg-muted text-foreground" : "bg-primary text-primary-foreground"
+              );
+              return (
+                <div
+                  key={msg.id}
+                  className={cn(
+                    "flex items-start gap-3 max-w-[85%]",
+                    isSystem ? "mr-auto" : "ml-auto flex-row-reverse"
+                  )}
+                >
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage
+                      src={
+                        isSystem
+                          ? undefined
+                          : players.find((p) => p.name === msg.sender)?.avatar
+                      }
+                    />
+                    <AvatarFallback>{msg.sender[0]}</AvatarFallback>
+                  </Avatar>
+                  <div className={bubbleClass}>
+                    <p className="text-sm font-medium mb-1">{msg.sender}</p>
+                    {msg.content && (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                        {msg.content}
+                      </p>
+                    )}
+                    {msg.prompt && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        프롬프트: {msg.prompt}
+                      </p>
+                    )}
+                    {msg.status === "image-generating" && (
+                      <div className="mt-3 flex h-32 w-full max-w-xs items-center justify-center rounded-md border border-dashed border-muted-foreground/60 bg-muted text-sm text-muted-foreground">
+                        이미지 생성 중입니다...
+                      </div>
+                    )}
+                    {msg.images && msg.images.length > 0 && (
+                      <div className="mt-3 grid gap-3">
+                        {msg.images.map((image) => (
+                          <div
+                            key={image.id}
+                            className="overflow-hidden rounded-md border bg-background"
+                          >
+                            <img
+                              src={image.dataUrl}
+                              alt={image.filename || "생성된 이미지"}
+                              className="block h-auto max-w-full"
+                            />
+                            <div className="px-3 py-2 text-xs text-muted-foreground">
+                              {image.filename || image.mime}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
+          {activeOptions.length > 0 && (
+            <div className="max-h-32 overflow-y-auto pr-1">
+              <div className="flex flex-wrap gap-2">
+                {activeOptions.map((option) => (
+                  <Button
+                    key={option}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleOptionClick(option)}
+                    disabled={isAwaitingResponse}
+                  >
+                    {option}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex gap-2 border-t pt-4">
-            <Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="메시지를 입력하세요..." className="flex-1 resize-none" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} />
-            <Button onClick={handleSendMessage} className="h-auto"><Send className="h-5 w-5" /></Button>
+            <Textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder={isAwaitingResponse ? "AI 응답을 기다리는 중입니다..." : "메시지를 입력하세요..."}
+              className="flex-1 resize-none"
+              disabled={isAwaitingResponse}
+              onKeyDown={(e) => {
+                if (isAwaitingResponse) return;
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+            />
+            <Button onClick={handleSendMessage} className="h-auto" disabled={isSendDisabled}>
+              <Send className="h-5 w-5" />
+            </Button>
           </div>
         </div>
       </main>

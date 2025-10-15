@@ -7,10 +7,40 @@ export type AiSocketEvent =
   | { type: "error"; error: Event }
   | { type: "message"; data: AiSocketMessage };
 
+export type AiServerImage = {
+  filename?: string;
+  data: string;
+  mime?: string;
+};
+
+export type AiServerOption =
+  | string
+  | {
+      id?: string;
+      label?: string;
+      value?: string;
+      text?: string;
+    };
+
+export type AiServerResponse = {
+  success?: boolean;
+  game_id?: string;
+  prompt?: string;
+  response?: string;
+  message?: string;
+  aiResponse?: string;
+  images?: AiServerImage[];
+  options?: AiServerOption[];
+  need_image?: boolean;
+  image_info?: { should_generate?: boolean; [key: string]: unknown };
+  [key: string]: unknown;
+};
+
 export type AiSocketMessage =
   | { kind: "chat"; id?: string; role: "assistant" | "system" | "user"; content: string; timestamp?: string }
   | { kind: "image"; id?: string; mime: string; data: string; alt?: string; timestamp?: string }
-  | { kind: "info"; message: string };
+  | { kind: "info"; message: string }
+  | { kind: "ai_response"; payload: AiServerResponse };
 
 export interface AiSocketOptions {
   gameId: string;       // ✅ 추가: 네임스페이스에 필요
@@ -63,8 +93,15 @@ export class AiWebSocketClient {
       this.emit({ type: "message", data: { kind: "info", message: String(data?.message ?? "status") } });
     });
     this.socket.on("game_response", (data) => {
-      const content = typeof data?.response === "string" ? data.response : JSON.stringify(data);
-      this.emit({ type: "message", data: { kind: "chat", role: "assistant", content } });
+      console.log("[AiWebSocketClient] game_response 수신:", data);
+      const payload: AiServerResponse = (typeof data === "object" && data !== null) ? (data as AiServerResponse) : { message: String(data) };
+      this.emit({ type: "message", data: { kind: "ai_response", payload } });
+    });
+    this.socket.on("game_image", (data) => {
+      console.log("[AiWebSocketClient] game_image 수신:", data);
+      const payload: AiServerResponse =
+        typeof data === "object" && data !== null ? (data as AiServerResponse) : { message: String(data) };
+      this.emit({ type: "message", data: { kind: "ai_response", payload } });
     });
     this.socket.on("message", (data) => {
       const content = typeof data === "string" ? data : JSON.stringify(data);
@@ -76,14 +113,24 @@ export class AiWebSocketClient {
     return this.lastUrl;
   }
 
-  sendUserMessage(content: string): void {
-    if (!this.socket) return;
+  sendUserMessage(content: string): boolean {
+    if (!this.socket) {
+      console.warn("[AiWebSocketClient] 소켓 인스턴스가 없어 메시지를 전송할 수 없습니다.");
+      return false;
+    }
+    if (!this.socket.connected) {
+      console.warn("[AiWebSocketClient] 소켓이 아직 연결되지 않았습니다.");
+      return false;
+    }
     this.socket.emit("message", { message: content });
+    return true;
   }
 
-  requestImage(prompt: string): void {
-    if (!this.socket) return;
+  requestImage(prompt: string): boolean {
+    if (!this.socket) return false;
+    if (!this.socket.connected) return false;
     this.socket.emit("image", { prompt });
+    return true;
   }
 
   close(): void {

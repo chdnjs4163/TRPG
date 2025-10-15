@@ -9,14 +9,47 @@ import CharacterCreation from "@/components/character-creation";
 import type { CharacterProfile as UiCharacterProfile } from "@/lib/data";
 
 interface DbCharacter {
-  character_id: number;
-  game_id: number;
+  id?: number | string;
+  character_id?: number | string;
+  userId?: number | string;
+  user_id?: number | string;
+  gameId?: number | string;
+  game_id?: number | string;
   name: string;
   class: string;
-  level: number;
-  stats: any;
-  inventory: any;
+  level?: number;
+  stats?: any;
+  inventory?: any;
+  avatar?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
+
+const parseScenario = (raw: unknown): Record<string, unknown> | undefined => {
+  if (!raw) return undefined;
+  if (typeof raw === "object") return raw as Record<string, unknown>;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+};
+
+const normalizeTemplate = (template: any) => {
+  if (!template || typeof template !== "object") return null;
+  const scenario =
+    template.scenario ??
+    parseScenario(template.scenario_json) ??
+    parseScenario(template.scenarioJson);
+  return {
+    ...template,
+    scenario,
+  };
+};
 
 export default function TemplateDetailPage() {
   const router = useRouter();
@@ -37,7 +70,7 @@ export default function TemplateDetailPage() {
     const fetchGameTemplate = async () => {
       try {
         const res = await axios.get(`${TITLES_API_URL}/${templateId}`);
-        const template = res.data?.data || res.data;
+        const template = normalizeTemplate(res.data?.data || res.data);
         setGameTemplate(template || null);
       } catch (err) {
         console.error("게임 템플릿 불러오기 실패:", err);
@@ -62,15 +95,22 @@ export default function TemplateDetailPage() {
         if (gid) {
           const resChars = await axios.get(`${CHAR_API_URL}/game/${gid}`);
           const rows: DbCharacter[] = resChars.data?.data || resChars.data || [];
-          const uiChars: UiCharacterProfile[] = rows.map((c) => ({
-            id: c.character_id,
-            name: c.name,
-            race: "",
-            class: c.class,
-            level: c.level ?? 1,
-            avatar: "/avatars/default.png",
-            favorite: false,
-          }));
+          const uiChars: UiCharacterProfile[] = rows.map((c) => {
+            const rawId = c.id ?? c.character_id;
+            const resolvedId =
+              rawId !== undefined && rawId !== null && !Number.isNaN(Number(rawId))
+                ? Number(rawId)
+                : Date.now();
+            return {
+              id: resolvedId,
+              name: c.name,
+              race: "",
+              class: c.class,
+              level: c.level ?? 1,
+              avatar: typeof c.avatar === "string" && c.avatar.length > 0 ? c.avatar : "/avatars/default.png",
+              favorite: false,
+            };
+          });
           setExistingCharacters(uiChars);
         } else {
           setExistingCharacters([]);

@@ -1,82 +1,325 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const pool = require('../db');
-const { success, error } = require('../utils/response');
+const pool = require("../db");
+const { success, error } = require("../utils/response");
+const { normalizeId, parseJson, serializeJson, ensureGameExists, ensureCharacterExists } = require("../utils/ai");
 
-// 1️⃣ 특정 게임의 캐릭터 조회
-router.get('/game/:gameId', async (req, res) => {
-    try {
-        const [rows] = await pool.query(
-            'SELECT * FROM characters WHERE game_id=?',
-            [req.params.gameId]
-        );
-        success(res, rows);
-    } catch (err) {
-        console.error('캐릭터 조회 오류:', err);
-        error(res, '캐릭터 조회 실패');
+function mapCharacter(row) {
+  return {
+    id: row.character_id,
+    userId: row.user_id,
+    gameId: row.game_id,
+    name: row.name,
+    class: row.class,
+    level: row.level,
+    stats: parseJson(row.stats, {}),
+    inventory: parseJson(row.inventory, []),
+    avatar: row.avatar,
+    updatedAt: row.updated_at,
+    createdAt: row.created_at,
+  };
+}
+
+async function fetchAiCharacter(characterId) {
+  const [rows] = await pool.query(
+    `SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, created_at, updated_at
+     FROM ai_characters
+     WHERE character_id = ?
+     LIMIT 1`,
+    [characterId]
+  );
+  return rows[0] || null;
+}
+
+async function importLegacyCharacter(characterId) {
+  const [legacyRows] = await pool.query(
+    `SELECT 
+        c.character_id,
+        c.game_id,
+        c.name,
+        c.class,
+        c.level,
+        c.stats,
+        c.inventory,
+        g.user_id
+     FROM characters c
+     LEFT JOIN games g ON c.game_id = g.game_id
+     WHERE c.character_id = ?
+     LIMIT 1`,
+    [characterId]
+  );
+
+  if (legacyRows.length === 0) return null;
+
+  const legacy = legacyRows[0];
+  const gameId = normalizeId(legacy.game_id);
+  if (!gameId) return null;
+
+  const userId =
+    normalizeId(legacy.user_id) || `legacy-user-${gameId}`;
+  const statsObj = parseJson(legacy.stats, {});
+  const inventoryObj = parseJson(legacy.inventory, []);
+
+  await ensureCharacterExists(normalizeId(legacy.character_id), {
+    gameId,
+    userId,
+    name: legacy.name,
+    className: legacy.class,
+    level: Number(legacy.level) || 1,
+    stats: statsObj,
+    inventory: inventoryObj,
+  });
+
+  return await fetchAiCharacter(characterId);
+}
+
+async function getCharacterOrImport(characterId) {
+  const normalizedId = normalizeId(characterId);
+  if (!normalizedId) return null;
+
+  const existing = await fetchAiCharacter(normalizedId);
+  if (existing) return existing;
+
+  return await importLegacyCharacter(normalizedId);
+}
+
+async function getCharactersForGame(gameId) {
+  const normalizedGameId = normalizeId(gameId);
+  if (!normalizedGameId) return [];
+
+  const [aiRows] = await pool.query(
+    `SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, created_at, updated_at
+     FROM ai_characters
+     WHERE game_id = ?
+     ORDER BY created_at ASC`,
+    [normalizedGameId]
+  );
+
+  const rows = [...aiRows];
+  const seen = new Set(rows.map((row) => normalizeId(row.character_id)));
+
+  const [legacyRows] = await pool.query(
+    `SELECT 
+        c.character_id,
+        c.game_id,
+        c.name,
+        c.class,
+        c.level,
+        c.stats,
+        c.inventory,
+        g.user_id
+     FROM characters c
+     LEFT JOIN games g ON c.game_id = g.game_id
+     WHERE c.game_id = ?`,
+    [normalizedGameId]
+  );
+
+  for (const legacy of legacyRows) {
+    const charId = normalizeId(legacy.character_id);
+    if (!charId || seen.has(charId)) continue;
+    const imported = await importLegacyCharacter(charId);
+    if (imported) {
+      rows.push(imported);
+      seen.add(charId);
     }
+  }
+
+  rows.sort((a, b) => {
+    const aTime = new Date(a.created_at || 0).getTime();
+    const bTime = new Date(b.created_at || 0).getTime();
+    return aTime - bTime;
+  });
+
+  return rows;
+}
+
+// 특정 게임의 캐릭터 목록 (호환용)
+router.get("/game/:gameId", async (req, res) => {
+  try {
+    const gameId = normalizeId(req.params.gameId);
+    const rows = await getCharactersForGame(gameId);
+    success(res, rows.map(mapCharacter));
+  } catch (err) {
+    console.error("캐릭터 조회 오류:", err);
+    error(res, "캐릭터 조회 실패");
+  }
 });
 
-// 2️⃣ 캐릭터 생성
-router.post('/', async (req, res) => {
-    const { game_id, name, class: charClass, level, stats, inventory } = req.body;
-    try {
-        if (!game_id || !name) return error(res, 'game_id와 name은 필수입니다.', 400);
+// 캐릭터 생성 (호환용)
+router.post("/", async (req, res) => {
+  try {
+    const {
+      game_id,
+      user_id,
+      name,
+      class: className,
+      level = 1,
+      stats = {},
+      inventory = [],
+      avatar = null,
+      character_id,
+    } = req.body || {};
 
-        // FK 존재 확인
-        const [games] = await pool.query('SELECT game_id FROM games WHERE game_id=?', [game_id]);
-        if (!games.length) return error(res, '유효하지 않은 game_id 입니다.', 400);
-
-        const [result] = await pool.query(
-            'INSERT INTO characters (game_id, name, class, level, stats, inventory) VALUES (?, ?, ?, ?, ?, ?)',
-            [game_id, name, charClass || null, level || 1, JSON.stringify(stats || {}), JSON.stringify(inventory || [])]
-        );
-        success(res, { character_id: result.insertId, game_id, name, class: charClass, level: level || 1 }, '캐릭터 생성 완료');
-    } catch (err) {
-        console.error('캐릭터 생성 오류:', err);
-        error(res, '캐릭터 생성 실패');
+    if (!game_id || !user_id || !name) {
+      return error(res, "game_id, user_id, name은 필수입니다.", 400);
     }
+
+    const characterId = normalizeId(character_id) || normalizeId(req.body?.id) || `ch-${Date.now()}`;
+    const serializedStats = serializeJson(stats ?? {}) ?? "{}";
+    const serializedInventory = serializeJson(inventory ?? []) ?? "[]";
+
+    const normalizedGameId = normalizeId(game_id);
+    await ensureGameExists(normalizedGameId);
+
+    await pool.query(
+      `INSERT INTO ai_characters (character_id, game_id, user_id, name, class, level, stats, inventory, avatar)
+       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?)`,
+      [
+        characterId,
+        normalizedGameId,
+        normalizeId(user_id),
+        String(name),
+        className ? String(className) : null,
+        Number(level) || 1,
+        serializedStats,
+        serializedInventory,
+        avatar ? String(avatar) : null,
+      ]
+    );
+
+    success(res, { character_id: characterId, game_id, name, class: className, level: Number(level) || 1 }, "캐릭터 생성 완료");
+  } catch (err) {
+    console.error("캐릭터 생성 오류:", err);
+    error(res, "캐릭터 생성 실패");
+  }
 });
 
-// 3️⃣ 캐릭터 수정
-router.put('/:characterId', async (req, res) => {
-    const { name, class: charClass, level, stats, inventory } = req.body;
-    try {
-        await pool.query(
-            'UPDATE characters SET name=?, class=?, level=?, stats=?, inventory=? WHERE character_id=?',
-            [name, charClass, level, JSON.stringify(stats), JSON.stringify(inventory), req.params.characterId]
-        );
-        success(res, null, '캐릭터 업데이트 완료');
-    } catch (err) {
-        console.error('캐릭터 수정 오류:', err);
-        error(res, '캐릭터 업데이트 실패');
+async function updateCharacter(characterId, payload) {
+  const fields = [];
+  const values = [];
+
+  if (payload.name !== undefined) {
+    fields.push("name = ?");
+    values.push(payload.name ? String(payload.name) : null);
+  }
+  if (payload.class !== undefined) {
+    fields.push("class = ?");
+    values.push(payload.class ? String(payload.class) : null);
+  }
+  if (payload.level !== undefined) {
+    fields.push("level = ?");
+    values.push(Number(payload.level) || 1);
+  }
+  if (payload.stats !== undefined) {
+    fields.push("stats = CAST(? AS JSON)");
+    values.push(serializeJson(payload.stats ?? {}) ?? "{}");
+  }
+  if (payload.inventory !== undefined) {
+    fields.push("inventory = CAST(? AS JSON)");
+    values.push(serializeJson(payload.inventory ?? []) ?? "[]");
+  }
+  if (payload.avatar !== undefined) {
+    fields.push("avatar = ?");
+    values.push(payload.avatar ? String(payload.avatar) : null);
+  }
+
+  if (fields.length === 0) {
+    return false;
+  }
+
+  values.push(characterId);
+
+  const [result] = await pool.query(
+    `UPDATE ai_characters SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE character_id = ?`,
+    values
+  );
+
+  return result.affectedRows > 0;
+}
+
+// 캐릭터 수정 (PUT 호환 + PATCH)
+router.put("/:characterId", async (req, res) => {
+  try {
+    const characterId = normalizeId(req.params.characterId);
+    const updated = await updateCharacter(characterId, req.body || {});
+    if (!updated) {
+      return error(res, "업데이트할 필드가 없거나 캐릭터를 찾을 수 없습니다.", 400);
     }
+    success(res, null, "캐릭터 업데이트 완료");
+  } catch (err) {
+    console.error("캐릭터 수정 오류:", err);
+    error(res, "캐릭터 업데이트 실패");
+  }
 });
 
-// 4️⃣ 캐릭터 삭제
-router.delete('/:characterId', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM characters WHERE character_id=?', [req.params.characterId]);
-        success(res, null, '캐릭터 삭제 완료');
-    } catch (err) {
-        console.error('캐릭터 삭제 오류:', err);
-        error(res, '캐릭터 삭제 실패');
+router.patch("/:characterId", async (req, res) => {
+  try {
+    const characterId = normalizeId(req.params.characterId);
+    const updated = await updateCharacter(characterId, req.body || {});
+    if (!updated) {
+      return res.status(400).json({ error: "No updates applied or character not found" });
     }
+
+    const [rows] = await pool.query(
+      `SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, created_at, updated_at
+       FROM ai_characters
+       WHERE character_id = ?
+       LIMIT 1`,
+      [characterId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Character not found" });
+    }
+    res.json(mapCharacter(rows[0]));
+  } catch (err) {
+    console.error("[characters.patch] error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
-// 5️⃣ 캐릭터 단일 조회
-router.get('/detail/:characterId', async (req, res) => {
-    try {
-        const [rows] = await pool.query(
-            'SELECT * FROM characters WHERE character_id=?',
-            [req.params.characterId]
-        );
-        if (!rows.length) return error(res, '캐릭터를 찾을 수 없음', 404);
-        success(res, rows[0]);
-    } catch (err) {
-        console.error('캐릭터 상세 조회 오류:', err);
-        error(res, '캐릭터 상세 조회 실패');
+// 캐릭터 삭제
+router.delete("/:characterId", async (req, res) => {
+  try {
+    const characterId = normalizeId(req.params.characterId);
+    const [result] = await pool.query("DELETE FROM ai_characters WHERE character_id = ?", [characterId]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Character not found" });
     }
+    success(res, null, "캐릭터 삭제 완료");
+  } catch (err) {
+    console.error("캐릭터 삭제 오류:", err);
+    error(res, "캐릭터 삭제 실패");
+  }
+});
+
+// 캐릭터 단일 조회 (호환)
+router.get("/detail/:characterId", async (req, res) => {
+  try {
+    const characterId = normalizeId(req.params.characterId);
+    const row = await getCharacterOrImport(characterId);
+    if (!row) return error(res, "캐릭터를 찾을 수 없음", 404);
+    success(res, mapCharacter(row));
+  } catch (err) {
+    console.error("캐릭터 상세 조회 오류:", err);
+    error(res, "캐릭터 상세 조회 실패");
+  }
+});
+
+// 명세: GET /api/characters/:characterId
+router.get("/:characterId", async (req, res) => {
+  try {
+    const characterId = normalizeId(req.params.characterId);
+    const row = await getCharacterOrImport(characterId);
+    if (!row) {
+      return res.status(404).json({ error: "Character not found" });
+    }
+    res.json(mapCharacter(row));
+  } catch (err) {
+    console.error("[characters.get] error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 module.exports = router;
+module.exports.getCharactersForGame = getCharactersForGame;
+module.exports.mapCharacter = mapCharacter;

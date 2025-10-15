@@ -31,6 +31,32 @@ import CharacterCreation from "@/components/character-creation";
 import CreatingCharacters from "@/components/creating_characters";
 import { type CharacterProfile } from "@/lib/data";
 
+const parseScenario = (raw: unknown): Record<string, unknown> | undefined => {
+  if (!raw) return undefined;
+  if (typeof raw === "object") return raw as Record<string, unknown>;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+};
+
+const normalizeTemplate = (template: any) => {
+  if (!template || typeof template !== "object") return template;
+  const scenario =
+    template.scenario ??
+    parseScenario(template.scenario_json) ??
+    parseScenario(template.scenarioJson);
+  return {
+    ...template,
+    scenario,
+  };
+};
+
 export default function TemplatesPage() {
   const router = useRouter();
   const [currentPage, setCurrentPage] = useState(0);
@@ -56,7 +82,11 @@ export default function TemplatesPage() {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((r) => r.json())
-      .then((result) => setTemplates(result?.data || []))
+      .then((result) => {
+        const raw = result?.data || result || [];
+        const normalized = Array.isArray(raw) ? raw.map(normalizeTemplate) : [];
+        setTemplates(normalized);
+      })
       .catch((e) => console.error('템플릿 불러오기 실패:', e));
   }, []);
 
