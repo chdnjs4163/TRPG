@@ -3,10 +3,10 @@
 "use client";
 import React from "react";
 import axios from "axios";
-import { useState, useEffect, useRef } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { AiWebSocketClient, type AiServerResponse } from "@/lib/ws";
-import { AI_SERVER_HTTP_URL } from "@/app/config";
+import { AI_SERVER_HTTP_URL, API_BASE_URL } from "@/app/config";
 
 // UI Components
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,45 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
-import { Send } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Send, Save, LogOut, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const STAT_LABELS: Record<string, string> = {
+  strength: "힘 (STR)",
+  dexterity: "민첩 (DEX)",
+  constitution: "체력 (CON)",
+  intelligence: "지능 (INT)",
+  wisdom: "지혜 (WIS)",
+  charisma: "매력 (CHA)",
+};
+
+const formatStatLabel = (key: string) => {
+  if (STAT_LABELS[key]) return STAT_LABELS[key];
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const normalizeInventory = (value: any): any[] => {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") {
+    return Object.entries(value).map(([name, payload]) => {
+      if (payload && typeof payload === "object") {
+        return { name, ...payload };
+      }
+      return { name, value: payload };
+    });
+  }
+  return value != null ? [value] : [];
+};
 
 // --- 인터페이스 정의 ---
 interface MessageImage {
@@ -46,6 +83,8 @@ interface Player {
   mana?: number;
   maxMana?: number;
   level: number;
+  stats?: Record<string, number>;
+  inventory?: any[];
 }
 
 const FLASK_AI_SERVICE_URL = AI_SERVER_HTTP_URL;
@@ -54,6 +93,7 @@ const IMAGE_WAIT_TIMEOUT_MS = 90000;
 export default function GamePage() {
   const searchParams = useSearchParams();
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // --- 상태 관리 ---
@@ -66,9 +106,18 @@ export default function GamePage() {
   const [gameId, setGameId] = useState<string | null>(null);
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
   const [activeOptions, setActiveOptions] = useState<string[]>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [conversationLoaded, setConversationLoaded] = useState(false);
   const socketRef = useRef<AiWebSocketClient | null>(null);
   const imageWaitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingImagePromptRef = useRef<string | null>(null);
+  const hydratingFromServerRef = useRef(false);
+  const conversationReadyRef = useRef(false);
+  const messageCount = messages.length;
+  const activeCharacterId = players[0]?.id;
+  const isDirtyRef = useRef(isDirty);
 
   const clearImageWait = () => {
     if (imageWaitRef.current) {
@@ -83,6 +132,21 @@ export default function GamePage() {
       clearImageWait();
     };
   }, []);
+
+  useEffect(() => {
+    if (hydratingFromServerRef.current) {
+      hydratingFromServerRef.current = false;
+      conversationReadyRef.current = true;
+      return;
+    }
+    if (!conversationReadyRef.current) {
+      conversationReadyRef.current = true;
+      if (messages.length === 0) {
+        return;
+      }
+    }
+    setIsDirty(true);
+  }, [messages]);
 
   const buildTimestamp = () =>
     new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -145,6 +209,106 @@ export default function GamePage() {
       .filter((opt): opt is string => opt !== null);
   };
 
+  const saveConversation = useCallback(
+    async (options?: { useBeacon?: boolean }) => {
+      if (!gameId || !activeCharacterId) return false;
+
+      const payload = {
+        game_id: gameId,
+        character_id: activeCharacterId,
+        session_id: sessionId,
+        title: gameTitle,
+        messages: messages.map((msg) => ({
+          id: msg.id,
+          sender: msg.sender,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          type: msg.type,
+          status: msg.status,
+          images: msg.images,
+          options: msg.options,
+        })),
+      };
+
+      if (options?.useBeacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
+        try {
+          const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+          const ok = navigator.sendBeacon(`${API_BASE_URL}/api/conversations`, blob);
+          if (ok) {
+            setIsDirty(false);
+            isDirtyRef.current = false;
+          }
+          return ok;
+        } catch (error) {
+          console.error("대화 저장 실패(sendBeacon):", error);
+          return false;
+        }
+      }
+
+      try {
+        setIsSaving(true);
+        const res = await fetch(`${API_BASE_URL}/api/conversations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to save conversation: ${res.status}`);
+        }
+        setIsDirty(false);
+        isDirtyRef.current = false;
+        return true;
+      } catch (error) {
+        console.error("대화 저장 실패:", error);
+        return false;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [gameId, activeCharacterId, sessionId, gameTitle, messages]
+  );
+
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  const saveConversationRef = useRef(saveConversation);
+  useEffect(() => {
+    saveConversationRef.current = saveConversation;
+  }, [saveConversation]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isDirtyRef.current) return;
+      saveConversationRef.current?.({ useBeacon: true });
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handlePopState = async () => {
+      if (!isDirtyRef.current) return;
+      const shouldSave = window.confirm("대화 내용을 저장하고 나가시겠습니까?");
+      if (shouldSave) {
+        const saver = saveConversationRef.current;
+        if (saver) {
+          const ok = await saver();
+          if (!ok) {
+            window.alert("대화 저장에 실패했습니다. 다시 시도해 주세요.");
+          }
+        }
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   // 플레이어 설정 전용 useEffect (쿼리 캐릭터 > 로컬 저장 > 서버 캐릭터 순으로 복원)
   useEffect(() => {
     const routeGameId = params?.id ? String(params.id) : null;
@@ -156,13 +320,19 @@ export default function GamePage() {
         id: character.id || Date.now(),
         name: character.name,
         role: character.class,
-        avatar: character.avatar || "/avatars/default.png",
+        avatar: character.avatar || "/placeholder-user.jpg",
         health: 100, maxHealth: 100,
         mana: character.class?.toLowerCase?.().includes("mage") ? 100 : undefined,
         maxMana: character.class?.toLowerCase?.().includes("mage") ? 100 : undefined,
         level: character.level || 1,
+        stats: character.stats ? { ...character.stats } : undefined,
+        inventory: normalizeInventory(character.inventory),
       };
       setPlayers([newPlayer]);
+      setConversationLoaded(false);
+      conversationReadyRef.current = false;
+      setIsDirty(false);
+      isDirtyRef.current = false;
       if (routeGameId && typeof window !== 'undefined') {
         localStorage.setItem(`lastCharacter:${routeGameId}`, JSON.stringify(character));
       }
@@ -203,7 +373,9 @@ export default function GamePage() {
             name: c.name,
             class: c.class,
             level: c.level ?? 1,
-            avatar: "/avatars/default.png",
+            avatar: c.avatar || "/placeholder-user.jpg",
+            stats: c.stats,
+            inventory: c.inventory,
           });
         }
       } catch (e) {
@@ -211,6 +383,55 @@ export default function GamePage() {
       }
     })();
   }, [searchParams, params]);
+
+  useEffect(() => {
+    if (!gameId || !activeCharacterId || conversationLoaded) return;
+    if (messageCount > 0) {
+      setConversationLoaded(true);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/api/conversations/game/${gameId}?character_id=${encodeURIComponent(activeCharacterId)}`
+        );
+        if (!res.ok) {
+          if (res.status !== 404) {
+            throw new Error(`Failed to load conversation: ${res.status}`);
+          }
+          setConversationLoaded(true);
+          return;
+        }
+        const data = await res.json();
+        if (data && Array.isArray(data?.messages) && data.messages.length > 0) {
+          hydratingFromServerRef.current = true;
+          setMessages(
+            data.messages.map((msg: any, index: number): Message => ({
+              id:
+                typeof msg.id === "number"
+                  ? msg.id
+                  : typeof msg.id === "string"
+                    ? Number(msg.id) || Date.now() + index
+                    : Date.now() + index,
+              sender: typeof msg.sender === "string" ? msg.sender : "시스템",
+              content: typeof msg.content === "string" ? msg.content : "",
+              timestamp: typeof msg.timestamp === "string" ? msg.timestamp : buildTimestamp(),
+              type: msg.type === "system" || msg.type === "dice" || msg.type === "combat" ? msg.type : "chat",
+              images: Array.isArray(msg.images) ? msg.images : undefined,
+              status: typeof msg.status === "string" ? msg.status : undefined,
+              options: Array.isArray(msg.options) ? msg.options : undefined,
+            }))
+          );
+          setIsDirty(false);
+          isDirtyRef.current = false;
+        }
+      } catch (error) {
+        console.error("대화 기록 불러오기 실패:", error);
+      } finally {
+        setConversationLoaded(true);
+      }
+    })();
+  }, [gameId, activeCharacterId, conversationLoaded, messageCount]);
 
   // AI 세션 시작 + 시나리오 로딩
   useEffect(() => {
@@ -589,6 +810,23 @@ export default function GamePage() {
     sendChatMessage(option);
   };
 
+  const handleRequestExit = useCallback(async () => {
+    if (isDirty) {
+      const shouldSave = window.confirm("대화 내용을 저장하시겠습니까?");
+      if (shouldSave) {
+        const ok = await saveConversation();
+        if (!ok) {
+          window.alert("대화 저장에 실패했습니다. 다시 시도해 주세요.");
+          return;
+        }
+      } else {
+        setIsDirty(false);
+        isDirtyRef.current = false;
+      }
+    }
+    router.back();
+  }, [isDirty, saveConversation, router]);
+
   if (isLoading) {
     return (
       <div className="flex h-screen bg-background text-foreground">
@@ -609,15 +847,54 @@ export default function GamePage() {
         <h2 className="text-lg font-semibold mb-4">플레이어</h2>
         <div className="space-y-4">
           {players.map((player) => (
-            <Card key={player.id}>
+            <Card
+              key={player.id}
+              className="cursor-pointer transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedPlayer(player)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedPlayer(player);
+                }
+              }}
+            >
               <CardContent className="p-4">
                 <div className="flex items-center space-x-3 mb-3">
-                  <Avatar><AvatarImage src={player.avatar} alt={player.name} /><AvatarFallback>{player.name[0]}</AvatarFallback></Avatar>
-                  <div><h3 className="font-semibold">{player.name}</h3><p className="text-sm text-muted-foreground">{player.role}</p></div>
+                  <Avatar>
+                    <AvatarImage src={player.avatar} alt={player.name} />
+                    <AvatarFallback>{player.name[0]}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h3 className="font-semibold">{player.name}</h3>
+                    <p className="text-sm text-muted-foreground">{player.role}</p>
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <div><div className="flex justify-between text-sm"><span>체력</span><span>{player.health}/{player.maxHealth}</span></div><Progress value={(player.health / player.maxHealth) * 100} className="h-2"/></div>
-                  {player.mana != null && (<div><div className="flex justify-between text-sm"><span>마나</span><span>{player.mana}/{player.maxMana}</span></div><Progress value={(player.mana / (player.maxMana || 100)) * 100} className="h-2" /></div>)}
+                  <div>
+                    <div className="flex justify-between text-sm">
+                      <span>체력</span>
+                      <span>
+                        {player.health}/{player.maxHealth}
+                      </span>
+                    </div>
+                    <Progress value={(player.health / player.maxHealth) * 100} className="h-2" />
+                  </div>
+                  {player.mana != null && (
+                    <div>
+                      <div className="flex justify-between text-sm">
+                        <span>마나</span>
+                        <span>
+                          {player.mana}/{player.maxMana}
+                        </span>
+                      </div>
+                      <Progress
+                        value={(player.mana / (player.maxMana || 100)) * 100}
+                        className="h-2"
+                      />
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -627,8 +904,42 @@ export default function GamePage() {
       
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* 상단 제목 영역 */}
-        <div className="shrink-0 border-b p-4 bg-black/10">
-          <h3 className="text-2xl font-bold text-foreground">{gameTitle}</h3>
+        <div className="shrink-0 border-b bg-black/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-2xl font-bold text-foreground">{gameTitle}</h3>
+            {isDirty && (
+              <p className="text-xs text-muted-foreground mt-1">저장되지 않은 대화가 있습니다.</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isSaving || !isDirty || players.length === 0}
+              onClick={async () => {
+                const ok = await saveConversation();
+                if (!ok) {
+                  window.alert("대화 저장에 실패했습니다. 다시 시도해 주세요.");
+                }
+              }}
+            >
+              {isSaving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              대화 저장
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                void handleRequestExit();
+              }}
+            >
+              <LogOut className="mr-2 h-4 w-4" /> 나가기
+            </Button>
+          </div>
         </div>
 
         {/* 하단 채팅 영역 */}
@@ -738,6 +1049,102 @@ export default function GamePage() {
           </div>
         </div>
       </main>
+      <Dialog
+        open={selectedPlayer !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedPlayer(null);
+        }}
+      >
+        {selectedPlayer && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{selectedPlayer.name}</DialogTitle>
+              <DialogDescription>
+                {selectedPlayer.role} · 레벨 {selectedPlayer.level}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16">
+                <AvatarImage src={selectedPlayer.avatar} alt={selectedPlayer.name} />
+                <AvatarFallback>{selectedPlayer.name[0]}</AvatarFallback>
+              </Avatar>
+              <div className="space-y-1 text-sm">
+                <p>
+                  체력:{" "}
+                  <span className="font-semibold">
+                    {selectedPlayer.health}/{selectedPlayer.maxHealth}
+                  </span>
+                </p>
+                {selectedPlayer.mana != null && (
+                  <p>
+                    마나:{" "}
+                    <span className="font-semibold">
+                      {selectedPlayer.mana}/{selectedPlayer.maxMana}
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+            {selectedPlayer.stats && Object.keys(selectedPlayer.stats).length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold">능력치</h4>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {Object.entries(selectedPlayer.stats).map(([key, value]) => (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                    >
+                      <span className="text-muted-foreground">{formatStatLabel(key)}</span>
+                      <span className="font-semibold">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <h4 className="text-sm font-semibold">인벤토리</h4>
+              {selectedPlayer.inventory && selectedPlayer.inventory.length > 0 ? (
+                <ul className="mt-2 space-y-2">
+                  {selectedPlayer.inventory.map((item, index) => {
+                    if (item && typeof item === "object") {
+                      const { name, ...rest } = item as Record<string, any>;
+                      const displayName =
+                        typeof name === "string" && name.trim().length > 0
+                          ? name
+                          : `아이템 ${index + 1}`;
+                      const detailEntries = Object.entries(rest).filter(
+                        ([, value]) => value !== undefined && value !== null && value !== ""
+                      );
+                      return (
+                        <li key={index} className="rounded-md border p-3 text-sm">
+                          <div className="font-medium">{displayName}</div>
+                          {detailEntries.length > 0 && (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {detailEntries.map(([k, v]) => `${k}: ${v}`).join(" / ")}
+                            </div>
+                          )}
+                        </li>
+                      );
+                    }
+                    return (
+                      <li key={index} className="rounded-md border p-3 text-sm">
+                        {typeof item === "string" ? item : JSON.stringify(item)}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">보유 아이템이 없습니다.</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSelectedPlayer(null)}>
+                닫기
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }

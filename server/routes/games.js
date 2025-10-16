@@ -65,7 +65,11 @@ router.get("/user/:userId", async (req, res) => {
           gt.thumbnail_url AS image,
           g.last_played AS date,
           g.status,
-          g.title_id
+          g.title_id,
+          COALESCE(
+            (SELECT name FROM ai_characters WHERE game_id = g.game_id ORDER BY updated_at DESC, created_at DESC LIMIT 1),
+            (SELECT name FROM characters WHERE game_id = g.game_id ORDER BY created_at DESC LIMIT 1)
+          ) AS character_name
        FROM games g
        JOIN game_titles gt ON g.title_id = gt.title_id
        WHERE g.user_id = ?
@@ -107,7 +111,11 @@ router.get("/find", async (req, res) => {
           gt.thumbnail_url AS image,
           g.last_played AS date,
           g.status,
-          g.title_id
+          g.title_id,
+          COALESCE(
+            (SELECT name FROM ai_characters WHERE game_id = g.game_id ORDER BY updated_at DESC, created_at DESC LIMIT 1),
+            (SELECT name FROM characters WHERE game_id = g.game_id ORDER BY created_at DESC LIMIT 1)
+          ) AS character_name
        FROM games g
        JOIN game_titles gt ON g.title_id = gt.title_id
        WHERE g.user_id = ? AND g.title_id = ?
@@ -138,7 +146,11 @@ router.post("/", async (req, res) => {
           gt.thumbnail_url AS image,
           g.last_played AS date,
           g.status,
-          g.title_id
+          g.title_id,
+          COALESCE(
+            (SELECT name FROM ai_characters WHERE game_id = g.game_id ORDER BY updated_at DESC, created_at DESC LIMIT 1),
+            (SELECT name FROM characters WHERE game_id = g.game_id ORDER BY created_at DESC LIMIT 1)
+          ) AS character_name
        FROM games g
        JOIN game_titles gt ON g.title_id = gt.title_id
        WHERE g.game_id = ?

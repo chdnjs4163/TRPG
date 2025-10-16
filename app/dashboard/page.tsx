@@ -29,6 +29,9 @@ interface Game {
   title: string;
   date: string;
   image?: string;
+  status?: string;
+  titleId?: number;
+  characterName?: string | null;
 }
 
 interface Template {
@@ -81,9 +84,21 @@ export default function DashboardPage() {
     fetch(`${API_BASE_URL}/api/games/user/${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-        .then((res) => res.json())
-        .then((result) => setRecentGames(result?.data || []))
-        .catch((err) => console.error("최근 게임 불러오기 실패:", err));
+      .then((res) => res.json())
+      .then((result) => {
+        const rows = Array.isArray(result?.data) ? result.data : [];
+        const normalized: Game[] = rows.map((game: any) => ({
+          id: Number(game.id),
+          title: game.title,
+          date: game.date,
+          image: game.image ?? undefined,
+          status: game.status ?? undefined,
+          titleId: game.titleId ?? game.title_id ?? undefined,
+          characterName: game.characterName ?? game.character_name ?? null,
+        }));
+        setRecentGames(normalized);
+      })
+      .catch((err) => console.error("최근 게임 불러오기 실패:", err));
 
     // 템플릿 불러오기
     fetch(`${API_BASE_URL}/api/game_titles?limit=20`, {
@@ -181,6 +196,9 @@ export default function DashboardPage() {
                                   <CardDescription>
                                     마지막 플레이: {game.date}
                                   </CardDescription>
+                                  <p className="mt-2 text-sm text-foreground/80">
+                                    주 캐릭터: {game.characterName ? game.characterName : "미등록"}
+                                  </p>
                                 </CardContent>
                               </Card>
                             </Link>

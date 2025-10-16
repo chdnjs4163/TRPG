@@ -11,6 +11,8 @@ export interface CharacterProfile {
   avatar: string;
   favorite: boolean;
   background?: string;
+  stats?: Record<string, number>;
+  inventory?: any[];
 }
 // 게임 템플릿 타입을 정의하고 내보냅니다 (export).
 export const templates = [

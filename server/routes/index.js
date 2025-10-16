@@ -7,6 +7,7 @@ router.use("/games", require("./games"));
 router.use("/characters", require("./characters"));
 router.use("/progress", require("./progress"));
 router.use("/messages", require("./messages"));
+router.use("/conversations", require("./conversations"));
 router.use("/ai", require("./spec-ai"));
 router.use("/game_titles", require("./game_titles"));
 
