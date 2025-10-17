@@ -90,7 +90,21 @@ POST /api/messages
 - body: { sessionId, role, content, type? }
 - resp: { id }
 
-6) Scenario / AI
+6) Conversation Logs
+- body: { game_id: string, character_id?: string, session_id?: string, title?: string, messages: [{ id?, sender, content, timestamp?, type?, status?, images?: [{ id?, mime?, filename?, data?: base64, url?: string }], options? }] }
+- resp: { ok: true }
+- notes: accepts inline base64 image data; files are saved to /public/conversations and messages persist image URLs. Upserts latest snapshot for (game_id, character_id) into ai_conversation_logs.
+
+POST /api/conversations/upload
+- body: { game_id: string, character_id?: string, data?: base64, dataUrl?, mime?, filename?, id? }
+- resp: { id, url, mime, filename }
+- notes: helper endpoint to store a single image before saving a conversation; returns the public URL.
+
+GET /api/conversations/game/:gameId?character_id=...
+- resp: { id, gameId, characterId, sessionId, title, messages, createdAt, updatedAt } | null (messages[].images[] include { id, url, mime, filename })
+- notes: returns most recent conversation snapshot; optional character_id filters by character.
+
+7) Scenario / AI
 POST /api/ai/generate-scenario
 - body: { sessionId, templateTitle }
 - resp: { gameTitle, initialMessage }
@@ -99,12 +113,12 @@ POST /api/ai/dialogue
 - body: { sessionId, history: [{ role, content }] }
 - resp: { aiResponse: string, audioUrl?: string }
 
-7) Images
+8) Images
 POST /api/ai/image
 - body: { sessionId, prompt, size?: '512x512'|'768x768', mime?: 'image/png'|'image/jpeg' }
 - resp: { id, mime, data: base64, prompt }
 
-8) WebSocket (/ws)
+9) WebSocket (/ws)
 Connect: /ws?sessionId=...&token?
 Client->Server messages:
 - { action: 'user_message', content }
@@ -297,7 +311,36 @@ body: { sessionId, role, content, type? }
 
 resp: { id }
 
-6) 시나리오 / AI (Scenario / AI)
+6) 대화 기록 (Conversation Logs)
+대화 저장
+POST /api/conversations
+
+
+body: { game_id: string, character_id?, session_id?, title?, messages: [{ id?, sender, content, timestamp?, type?, status?, images?: [{ id?, mime?, filename?, data?: base64, url?: string }], options? }] }
+
+resp: { ok: true }
+
+※ 이미지의 base64 데이터를 전달하면 서버가 /public/conversations 경로에 파일로 저장하고 URL만 메시지에 보관합니다. character_id를 생략하면 해당 게임에서 최신 캐릭터를 자동 선택하며, 같은 game_id + character_id 조합에 대해 최신 스냅샷을 JSON 형태로 upsert (ai_conversation_logs 테이블).
+
+이미지 업로드
+POST /api/conversations/upload
+
+
+body: { game_id: string, character_id?, data?: base64, dataUrl?, mime?, filename?, id? }
+
+resp: { id, url, mime, filename }
+
+※ 대화를 저장하기 전에 개별 이미지를 업로드할 때 사용합니다. URL을 받은 뒤 messages[].images[].url에 채워 넣으세요.
+
+대화 조회
+GET /api/conversations/game/:gameId?character_id=...
+
+
+resp: { id, gameId, characterId, sessionId, title, messages: [...], createdAt, updatedAt } | null (messages[].images[]는 { id, url, mime, filename } 형태)
+
+※ character_id를 전달하면 해당 캐릭터의 최신 기록만 반환.
+
+7) 시나리오 / AI (Scenario / AI)
 시나리오 생성
 POST /api/ai/generate-scenario
 
@@ -314,7 +357,7 @@ body: { sessionId, history: [{ role, content }] }
 
 resp: { aiResponse: string, audioUrl?: string }
 
-7) 이미지 (Images)
+8) 이미지 (Images)
 POST /api/ai/image
 
 
@@ -322,7 +365,7 @@ body: { sessionId, prompt, size?: '512x512'|'768x768', mime?: 'image/png'|'image
 
 resp: { id, mime, data: base64, prompt }
 
-8) WebSocket (/ws)
+9) WebSocket (/ws)
 
 연결
 

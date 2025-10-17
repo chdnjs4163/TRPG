@@ -54,12 +54,20 @@ const normalizeInventory = (value: any): any[] => {
   return value != null ? [value] : [];
 };
 
+const resolveStaticUrl = (url?: string | null): string | undefined => {
+  if (!url || typeof url !== "string" || url.length === 0) return undefined;
+  if (/^https?:\/\//i.test(url)) return url;
+  const base = API_BASE_URL.replace(/\/api$/, "");
+  return `${base}${url.startsWith("/") ? url : `/${url}`}`;
+};
+
 // --- 인터페이스 정의 ---
 interface MessageImage {
   id: string;
   dataUrl: string;
   mime: string;
   filename?: string;
+  url?: string;
 }
 
 interface Message {
@@ -72,6 +80,13 @@ interface Message {
   status?: "image-generating";
   prompt?: string;
   options?: string[];
+}
+
+interface StoredImageMeta {
+  id: string;
+  url: string;
+  mime?: string;
+  filename?: string;
 }
 interface Player {
   id: number;
@@ -118,6 +133,7 @@ export default function GamePage() {
   const messageCount = messages.length;
   const activeCharacterId = players[0]?.id;
   const isDirtyRef = useRef(isDirty);
+  const imageUploadCacheRef = useRef(new Map<string, StoredImageMeta>());
 
   const clearImageWait = () => {
     if (imageWaitRef.current) {
@@ -209,25 +225,130 @@ export default function GamePage() {
       .filter((opt): opt is string => opt !== null);
   };
 
+  const uploadImageIfNeeded = useCallback(
+    async (image: MessageImage | null | undefined): Promise<StoredImageMeta | null> => {
+      if (!image) return null;
+      if (!activeCharacterId || !gameId) return null;
+
+      const normalizedUrl =
+        typeof image.url === "string" && image.url.length > 0
+          ? image.url
+          : typeof image.dataUrl === "string" && !image.dataUrl.startsWith("data:")
+            ? image.dataUrl
+            : null;
+
+      if (normalizedUrl) {
+        return {
+          id: image.id || `img-${Date.now()}`,
+          url: normalizedUrl,
+          mime: image.mime,
+          filename: image.filename,
+        };
+      }
+
+      const cacheKey = image.dataUrl || image.id;
+      if (cacheKey && imageUploadCacheRef.current.has(cacheKey)) {
+        return imageUploadCacheRef.current.get(cacheKey) || null;
+      }
+
+      let base64: string | null = null;
+      let inferredMime = image.mime;
+
+      if (typeof image.dataUrl === "string" && image.dataUrl.startsWith("data:")) {
+        const match = image.dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+        if (match) {
+          inferredMime = inferredMime || match[1];
+          base64 = match[2];
+        }
+      }
+
+      if (!base64) {
+        return null;
+      }
+
+      const body: Record<string, unknown> = {
+        game_id: gameId,
+        mime: inferredMime,
+        filename: image.filename,
+        data: base64,
+      };
+      if (activeCharacterId) {
+        body.character_id = activeCharacterId;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/api/conversations/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        throw new Error(`이미지 업로드 실패: ${res.status}`);
+      }
+
+      const saved = (await res.json()) as StoredImageMeta;
+      const normalized: StoredImageMeta = {
+        id: saved.id || image.id || `img-${Date.now()}`,
+        url: saved.url,
+        mime: saved.mime || inferredMime,
+        filename: saved.filename || image.filename,
+      };
+
+      if (cacheKey) {
+        imageUploadCacheRef.current.set(cacheKey, normalized);
+      }
+
+      return normalized;
+    },
+    [API_BASE_URL, activeCharacterId, gameId]
+  );
+
   const saveConversation = useCallback(
     async (options?: { useBeacon?: boolean }) => {
       if (!gameId || !activeCharacterId) return false;
 
-      const payload = {
-        game_id: gameId,
-        character_id: activeCharacterId,
-        session_id: sessionId,
-        title: gameTitle,
-        messages: messages.map((msg) => ({
+      const sanitizedMessages: Record<string, unknown>[] = [];
+      for (const msg of messages) {
+        const baseMessage: Record<string, unknown> = {
           id: msg.id,
           sender: msg.sender,
           content: msg.content,
           timestamp: msg.timestamp,
           type: msg.type,
           status: msg.status,
-          images: msg.images,
-          options: msg.options,
-        })),
+          prompt: msg.prompt,
+        };
+
+        if (msg.options && msg.options.length > 0) {
+          baseMessage.options = msg.options;
+        }
+
+        if (Array.isArray(msg.images) && msg.images.length > 0) {
+          const processedImages: StoredImageMeta[] = [];
+          for (const image of msg.images) {
+            try {
+              const uploaded = await uploadImageIfNeeded(image);
+              if (uploaded) {
+                processedImages.push(uploaded);
+              }
+            } catch (error) {
+              console.error("이미지 업로드 실패:", error);
+            }
+          }
+          if (processedImages.length > 0) {
+            baseMessage.images = processedImages;
+          }
+        }
+
+        sanitizedMessages.push(baseMessage);
+      }
+
+      const payload = {
+        game_id: gameId,
+        ...(activeCharacterId ? { character_id: activeCharacterId } : {}),
+        session_id: sessionId,
+        title: gameTitle,
+        messages: sanitizedMessages,
       };
 
       if (options?.useBeacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
@@ -265,7 +386,7 @@ export default function GamePage() {
         setIsSaving(false);
       }
     },
-    [gameId, activeCharacterId, sessionId, gameTitle, messages]
+    [gameId, activeCharacterId, sessionId, gameTitle, messages, uploadImageIfNeeded]
   );
 
   useEffect(() => {
@@ -406,21 +527,62 @@ export default function GamePage() {
         if (data && Array.isArray(data?.messages) && data.messages.length > 0) {
           hydratingFromServerRef.current = true;
           setMessages(
-            data.messages.map((msg: any, index: number): Message => ({
-              id:
-                typeof msg.id === "number"
-                  ? msg.id
-                  : typeof msg.id === "string"
-                    ? Number(msg.id) || Date.now() + index
-                    : Date.now() + index,
-              sender: typeof msg.sender === "string" ? msg.sender : "시스템",
-              content: typeof msg.content === "string" ? msg.content : "",
-              timestamp: typeof msg.timestamp === "string" ? msg.timestamp : buildTimestamp(),
-              type: msg.type === "system" || msg.type === "dice" || msg.type === "combat" ? msg.type : "chat",
-              images: Array.isArray(msg.images) ? msg.images : undefined,
-              status: typeof msg.status === "string" ? msg.status : undefined,
-              options: Array.isArray(msg.options) ? msg.options : undefined,
-            }))
+            data.messages.map((msg: any, index: number): Message => {
+              const images = Array.isArray(msg.images)
+                ? msg.images
+                    .map((image: any, imageIndex: number): MessageImage | null => {
+                      if (!image) return null;
+                      const id =
+                        typeof image.id === "string"
+                          ? image.id
+                          : `image-${Date.now()}-${index}-${imageIndex}`;
+                      const url =
+                        typeof image.url === "string" && image.url.length > 0 ? image.url : undefined;
+                      const rawData =
+                        typeof image.data === "string" && image.data.length > 0 ? image.data : undefined;
+                      const mime =
+                        typeof image.mime === "string" && image.mime.length > 0 ? image.mime : "image/png";
+                      let dataUrl: string | undefined;
+                      if (url) {
+                        dataUrl = resolveStaticUrl(url);
+                      } else if (rawData) {
+                        dataUrl = `data:${mime};base64,${rawData}`;
+                      } else if (typeof image.dataUrl === "string" && image.dataUrl.length > 0) {
+                        dataUrl = image.dataUrl;
+                      } else {
+                        return null;
+                      }
+                      return {
+                        id,
+                        dataUrl,
+                        mime,
+                        filename:
+                          typeof image.filename === "string" && image.filename.length > 0
+                            ? image.filename
+                            : undefined,
+                        url: resolveStaticUrl(url),
+                      };
+                    })
+                    .filter((img): img is MessageImage => img !== null)
+                : undefined;
+
+              return {
+                id:
+                  typeof msg.id === "number"
+                    ? msg.id
+                    : typeof msg.id === "string"
+                      ? Number(msg.id) || Date.now() + index
+                      : Date.now() + index,
+                sender: typeof msg.sender === "string" ? msg.sender : "시스템",
+                content: typeof msg.content === "string" ? msg.content : "",
+                timestamp: typeof msg.timestamp === "string" ? msg.timestamp : buildTimestamp(),
+                type:
+                  msg.type === "system" || msg.type === "dice" || msg.type === "combat" ? msg.type : "chat",
+                images,
+                status: typeof msg.status === "string" ? msg.status : undefined,
+                options: Array.isArray(msg.options) ? msg.options : undefined,
+              };
+            })
           );
           setIsDirty(false);
           isDirtyRef.current = false;

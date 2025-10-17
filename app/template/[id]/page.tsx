@@ -99,8 +99,8 @@ export default function TemplateDetailPage() {
   }, [templateId]);
 
   // 실제 시작 시점에만 게임 슬롯 생성 보장
-  const ensureGameSlot = async (): Promise<number> => {
-    if (gameId) return gameId;
+  const ensureGameSlot = async ({ forceNew = false }: { forceNew?: boolean } = {}): Promise<number> => {
+    if (!forceNew && gameId) return gameId;
     const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
     if (!userId) throw new Error('로그인이 필요합니다.');
     const created = await axios.post(GAMES_API_URL, { user_id: userId, title_id: Number(templateId), slot_number: 1, status: 'ongoing' });
@@ -154,7 +154,7 @@ export default function TemplateDetailPage() {
 
   const handleStartGame = async () => {
     try {
-      const gid = await ensureGameSlot();
+      await ensureGameSlot({ forceNew: true });
       setStep('creation');
     } catch (e) {
       alert('게임을 시작할 수 없습니다. 다시 로그인해 주세요.');

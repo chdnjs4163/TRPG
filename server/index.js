@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const path = require("path");
 const { ensureCoreTables } = require("./utils/db-init");
 
 dotenv.config();
@@ -8,7 +9,18 @@ const app = express();
 
 // CORS 설정
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+// Static assets for conversation images
+const conversationsStaticRoot = path.join(__dirname, "public", "conversations");
+app.use(
+  "/conversations",
+  express.static(conversationsStaticRoot, {
+    maxAge: "7d",
+    index: false,
+  })
+);
 
 // Health check
 app.get("/", (req, res) => res.json({ ok: true, service: "TRPG API" }));
