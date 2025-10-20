@@ -50,6 +50,17 @@ const normalizeTemplate = (template: any) => {
   };
 };
 
+const calculateHealthFromStats = (stats?: Record<string, number>): number => {
+  const base = 100;
+  if (!stats) return base;
+  let total = 0;
+  for (const value of Object.values(stats)) {
+    const num = Number(value);
+    if (!Number.isNaN(num)) total += num;
+  }
+  return Math.round(base + base * (total / 100));
+};
+
 export default function TemplateDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -99,8 +110,7 @@ export default function TemplateDetailPage() {
   }, [templateId]);
 
   // 실제 시작 시점에만 게임 슬롯 생성 보장
-  const ensureGameSlot = async ({ forceNew = false }: { forceNew?: boolean } = {}): Promise<number> => {
-    if (!forceNew && gameId) return gameId;
+  const ensureGameSlot = async (): Promise<number> => {
     const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
     if (!userId) throw new Error('로그인이 필요합니다.');
     const created = await axios.post(GAMES_API_URL, { user_id: userId, title_id: Number(templateId), slot_number: 1, status: 'ongoing' });
@@ -115,30 +125,41 @@ export default function TemplateDetailPage() {
       const gid = await ensureGameSlot();
       const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
       if (!userId) throw new Error('로그인이 필요합니다.');
+      const stats = newChar.stats ?? {};
+      const computedHealth = newChar.health ?? 100;
       const payload = {
         game_id: gid,
         user_id: userId,
         name: newChar.name,
         class: newChar.class,
         level: newChar.level ?? 1,
-        stats: newChar.stats ?? {},
+        stats,
         inventory: newChar.inventory ?? [],
         avatar: newChar.avatar,
       } as const;
       const res = await axios.post(CHAR_API_URL, payload);
       const created: DbCharacter = (res.data?.data || res.data) as DbCharacter;
+      const rawCharacterId = created.character_id ?? created.id ?? gid;
+      const parsedCharacterId =
+        typeof rawCharacterId === "string" ? Number(rawCharacterId) : rawCharacterId;
+      const characterId =
+        typeof parsedCharacterId === "number" && Number.isFinite(parsedCharacterId)
+          ? parsedCharacterId
+          : gid;
       const createdUi: UiCharacterProfile = {
-        id: created.character_id,
+        id: characterId,
         name: created.name || newChar.name,
         race: "",
         class: created.class || newChar.class,
         level: created.level ?? newChar.level ?? 1,
         avatar: newChar.avatar || "/placeholder-user.jpg",
         favorite: false,
-        stats: newChar.stats ?? undefined,
+        stats,
         inventory: Array.isArray(created.inventory)
           ? created.inventory
           : newChar.inventory ?? [],
+        health: computedHealth,
+        maxHealth: computedHealth,
       };
       const query = new URLSearchParams({ character: encodeURIComponent(JSON.stringify(createdUi)) });
       router.push(`/game/${gid}?${query.toString()}`);
@@ -148,17 +169,15 @@ export default function TemplateDetailPage() {
   };
 
   const handleCancel = () => {
-    if (step === 'creation') setStep('info');
-    else router.back();
+    if (step === 'creation') {
+      setStep('info');
+    } else {
+      router.back();
+    }
   };
 
   const handleStartGame = async () => {
-    try {
-      await ensureGameSlot({ forceNew: true });
-      setStep('creation');
-    } catch (e) {
-      alert('게임을 시작할 수 없습니다. 다시 로그인해 주세요.');
-    }
+    setStep('creation');
   };
 
   if (loading) return <div>템플릿 정보 및 캐릭터 불러오는 중...</div>;

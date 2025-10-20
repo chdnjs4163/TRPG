@@ -115,26 +115,6 @@ CREATE TABLE ai_progress_checkpoints (
   UNIQUE KEY uq_ai_progress_checkpoints (session_id, checkpoint_key)
 );
 
-CREATE TABLE ai_conversation_logs (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  game_id VARCHAR(64) NOT NULL,
-  character_id VARCHAR(64) NOT NULL,
-  session_id VARCHAR(64) NULL,
-  title VARCHAR(255) NULL,
-  messages JSON NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_ai_conversation_logs_game
-    FOREIGN KEY (game_id) REFERENCES ai_games(game_id)
-    ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT fk_ai_conversation_logs_character
-    FOREIGN KEY (character_id) REFERENCES ai_characters(character_id)
-    ON DELETE CASCADE ON UPDATE CASCADE,
-  INDEX idx_conversation_game (game_id),
-  INDEX idx_conversation_character (character_id),
-  UNIQUE KEY uq_conversation_game_character (game_id, character_id)
-);
-
 CREATE TABLE ai_messages (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   session_id VARCHAR(64) NOT NULL,

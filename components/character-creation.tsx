@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { type CharacterProfile } from "@/lib/data";
 
-const STAT_KEYS = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"] as const;
+const STAT_KEYS = ["strength", "dexterity", "wisdom", "charisma"] as const;
 type StatKey = (typeof STAT_KEYS)[number];
 type CharacterStats = Record<StatKey, number>;
 
@@ -20,8 +20,6 @@ const PLAYER_POINTS = 10;
 const STAT_LABELS: Record<StatKey, string> = {
   strength: "힘 (STR)",
   dexterity: "민첩 (DEX)",
-  constitution: "체력 (CON)",
-  intelligence: "지능 (INT)",
   wisdom: "지혜 (WIS)",
   charisma: "매력 (CHA)",
 };

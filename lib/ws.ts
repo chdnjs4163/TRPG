@@ -40,7 +40,7 @@ export type AiSocketMessage =
   | { kind: "chat"; id?: string; role: "assistant" | "system" | "user"; content: string; timestamp?: string }
   | { kind: "image"; id?: string; mime: string; data: string; alt?: string; timestamp?: string }
   | { kind: "info"; message: string }
-  | { kind: "ai_response"; payload: AiServerResponse };
+  | { kind: "ai_response"; payload: AiServerResponse; source?: string };
 
 export interface AiSocketOptions {
   gameId: string;       // ✅ 추가: 네임스페이스에 필요
@@ -60,9 +60,7 @@ export class AiWebSocketClient {
 
   connect(): void {
     const baseUrl = (AI_SERVER_WS_URL || "http://192.168.26.165:5001").replace(/\/$/, "");
-    const namespace = `/game/${this.options.gameId}`;
-    // 실제로 연결할 전체 네임스페이스 URL
-    this.lastUrl = `${baseUrl}${namespace}`;
+    this.lastUrl = `${baseUrl}/game/${this.options.gameId}`;
     console.log("[AiWebSocketClient] connecting to:", this.lastUrl);
 
     // 클라이언트는 네임스페이스 전체 URL로 직접 연결해야 함
@@ -70,7 +68,7 @@ export class AiWebSocketClient {
       path: "/socket.io", // 서버에서 커스텀 path를 사용한다면 맞춰주세요
       transports: ["websocket"],
       auth: { token: this.options.token },
-      query: { sessionId: this.options.sessionId },
+      query: { sessionId: this.options.sessionId, gameId: this.options.gameId },
     });
 
     this.socket.on("connect", () => {
@@ -95,13 +93,13 @@ export class AiWebSocketClient {
     this.socket.on("game_response", (data) => {
       console.log("[AiWebSocketClient] game_response 수신:", data);
       const payload: AiServerResponse = (typeof data === "object" && data !== null) ? (data as AiServerResponse) : { message: String(data) };
-      this.emit({ type: "message", data: { kind: "ai_response", payload } });
+      this.emit({ type: "message", data: { kind: "ai_response", payload, source: "game_response" } });
     });
     this.socket.on("game_image", (data) => {
       console.log("[AiWebSocketClient] game_image 수신:", data);
       const payload: AiServerResponse =
         typeof data === "object" && data !== null ? (data as AiServerResponse) : { message: String(data) };
-      this.emit({ type: "message", data: { kind: "ai_response", payload } });
+      this.emit({ type: "message", data: { kind: "ai_response", payload, source: "game_image" } });
     });
     this.socket.on("message", (data) => {
       const content = typeof data === "string" ? data : JSON.stringify(data);

@@ -4,7 +4,7 @@
 import React from "react";
 import axios from "axios";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { AiWebSocketClient, type AiServerResponse } from "@/lib/ws";
 import { AI_SERVER_HTTP_URL, API_BASE_URL } from "@/app/config";
 
@@ -22,14 +22,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Send, Save, LogOut, Loader2 } from "lucide-react";
+import { Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const STAT_LABELS: Record<string, string> = {
   strength: "힘 (STR)",
   dexterity: "민첩 (DEX)",
-  constitution: "체력 (CON)",
-  intelligence: "지능 (INT)",
   wisdom: "지혜 (WIS)",
   charisma: "매력 (CHA)",
 };
@@ -61,6 +59,11 @@ const resolveStaticUrl = (url?: string | null): string | undefined => {
   return `${base}${url.startsWith("/") ? url : `/${url}`}`;
 };
 
+const calculateHealthFromStats = () => {
+  const base = 100;
+  return base;
+};
+
 // --- 인터페이스 정의 ---
 interface MessageImage {
   id: string;
@@ -82,14 +85,8 @@ interface Message {
   options?: string[];
 }
 
-interface StoredImageMeta {
-  id: string;
-  url: string;
-  mime?: string;
-  filename?: string;
-}
 interface Player {
-  id: number;
+  id: string;
   name: string;
   role: string;
   avatar: string;
@@ -103,12 +100,167 @@ interface Player {
 }
 
 const FLASK_AI_SERVICE_URL = AI_SERVER_HTTP_URL;
-const IMAGE_WAIT_TIMEOUT_MS = 90000;
+const CHAR_API_URL = "http://192.168.26.165:1024/api/characters";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const parseStatsPayload = (value: unknown): Record<string, number> | undefined => {
+  if (!value) return undefined;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parseStatsPayload(parsed);
+    } catch {
+      return undefined;
+    }
+  }
+  if (Array.isArray(value)) {
+    const result: Record<string, number> = {};
+    value.forEach((item, index) => {
+      const num = Number(item);
+      if (!Number.isNaN(num)) {
+        result[String(index)] = num;
+      }
+    });
+    return Object.keys(result).length > 0 ? result : undefined;
+  }
+  if (isRecord(value)) {
+    const result: Record<string, number> = {};
+    Object.entries(value).forEach(([key, raw]) => {
+      const num = Number(raw);
+      if (!Number.isNaN(num)) {
+        result[key] = num;
+      }
+    });
+    return Object.keys(result).length > 0 ? result : undefined;
+  }
+  return undefined;
+};
+
+const collectPlayerUpdateEntries = (payload: AiServerResponse): Record<string, unknown>[] => {
+  const updates: Record<string, unknown>[] = [];
+  const candidateKeys = [
+    "player",
+    "playerUpdate",
+    "player_update",
+    "character",
+    "characterUpdate",
+    "character_update",
+  ];
+  candidateKeys.forEach((key) => {
+    const value = (payload as Record<string, unknown>)[key];
+    if (isRecord(value)) {
+      updates.push(value);
+    }
+  });
+
+  const arrayKeys = ["players", "playerUpdates", "characters", "characterUpdates"];
+  arrayKeys.forEach((key) => {
+    const value = (payload as Record<string, unknown>)[key];
+    if (Array.isArray(value)) {
+      value.forEach((entry) => {
+        if (isRecord(entry)) {
+          updates.push(entry);
+        }
+      });
+    }
+  });
+
+  if (updates.length === 0 && (payload as Record<string, unknown>).stats) {
+    const statsCandidate = parseStatsPayload((payload as Record<string, unknown>).stats);
+    if (statsCandidate) {
+      updates.push({ stats: statsCandidate });
+    }
+  }
+
+  if (updates.length === 0 && (payload as Record<string, unknown>).inventory) {
+    updates.push({ inventory: (payload as Record<string, unknown>).inventory });
+  }
+
+  return updates;
+};
+
+const areNumberRecordsEqual = (
+  a?: Record<string, number>,
+  b?: Record<string, number>,
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return !a && !b;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => Number(a[key]) === Number(b[key]));
+};
+
+const areInventoriesEqual = (a?: any[], b?: any[]): boolean => {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b)) return !a && !b;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (JSON.stringify(left) !== JSON.stringify(right)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const convertCharacterToPlayer = (character: any): Player | null => {
+  if (!character) return null;
+  const parseNumeric = (value: unknown): number | undefined => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : undefined;
+  };
+  const rawStats =
+    character?.stats ??
+    character?.character_stats ??
+    character?.attributes ??
+    character?.attributes_map ??
+    character?.stats_json;
+  const stats = parseStatsPayload(rawStats);
+  const inventory = normalizeInventory(
+    character.inventory ?? character.items ?? character.character_inventory ?? character.bag,
+  );
+  const rawId =
+    character.id ??
+    character.character_id ??
+    character.characterId ??
+    character.characterIdStr ??
+    character.characterIdString;
+  const resolvedId = rawId ? String(rawId) : String(Date.now());
+  const computedHealth =
+    parseNumeric(character.health) ??
+    parseNumeric(character.currentHealth) ??
+    calculateHealthFromStats(stats);
+  const computedMaxHealth =
+    parseNumeric(character.maxHealth) ??
+    parseNumeric(character.max_health) ??
+    calculateHealthFromStats(stats);
+
+  return {
+    id: resolvedId,
+    name: character.name ?? "이름 없음",
+    role: character.class ?? character.role ?? "모험가",
+    avatar: character.avatar || "/placeholder-user.jpg",
+    health: computedHealth,
+    maxHealth: computedMaxHealth,
+    mana:
+      parseNumeric(character.mana) ??
+      (character.class?.toLowerCase?.().includes("mage") ? 100 : undefined),
+    maxMana:
+      parseNumeric(character.maxMana) ??
+      (character.class?.toLowerCase?.().includes("mage") ? 100 : undefined),
+    level: parseNumeric(character.level) ?? 1,
+    stats: stats ?? undefined,
+    inventory,
+  };
+};
 
 export default function GamePage() {
   const searchParams = useSearchParams();
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // --- 상태 관리 ---
@@ -122,53 +274,277 @@ export default function GamePage() {
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
   const [activeOptions, setActiveOptions] = useState<string[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
-  const [conversationLoaded, setConversationLoaded] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [aiServerOnline, setAiServerOnline] = useState(true);
   const socketRef = useRef<AiWebSocketClient | null>(null);
-  const imageWaitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingImagePromptRef = useRef<string | null>(null);
-  const hydratingFromServerRef = useRef(false);
-  const conversationReadyRef = useRef(false);
-  const messageCount = messages.length;
   const activeCharacterId = players[0]?.id;
-  const isDirtyRef = useRef(isDirty);
-  const imageUploadCacheRef = useRef(new Map<string, StoredImageMeta>());
+  const storageKeyId = gameId || (params?.id ? String(params.id) : null);
 
-  const clearImageWait = () => {
-    if (imageWaitRef.current) {
-      clearTimeout(imageWaitRef.current);
-      imageWaitRef.current = null;
-    }
-    pendingImagePromptRef.current = null;
-  };
+  const persistCharacterSnapshot = useCallback(
+    (player: Player, gameKey?: string | null) => {
+      const key = gameKey ?? storageKeyId;
+      if (!key || typeof window === "undefined") return;
+      const snapshot = {
+        id: player.id,
+        name: player.name,
+        class: player.role,
+        level: player.level,
+        avatar: player.avatar,
+        stats: player.stats,
+        inventory: player.inventory,
+        health: player.health,
+        maxHealth: player.maxHealth,
+      };
+      try {
+        localStorage.setItem(`lastCharacter:${key}`, JSON.stringify(snapshot));
+      } catch (error) {
+        console.warn("캐릭터 스냅샷 저장 실패:", error);
+      }
+    },
+    [storageKeyId],
+  );
+
+  const applyPlayerState = useCallback(
+    (player: Player, gameKey?: string | null) => {
+      setPlayers([player]);
+      setSelectedPlayer((prev) => (prev && prev.id === player.id ? player : prev));
+      persistCharacterSnapshot(player, gameKey);
+    },
+    [persistCharacterSnapshot],
+  );
+
+  const fetchLatestCharacter = useCallback(
+    async (targetGameId?: string | null, reason: string = "manual") => {
+      const resolvedId = targetGameId ?? storageKeyId;
+      if (!resolvedId) return;
+      try {
+        console.log("[GamePage] 최신 캐릭터 조회 요청", { resolvedId, reason });
+        const res = await axios.get(`${CHAR_API_URL}/game/${resolvedId}`);
+        const rows = res.data?.data || res.data || [];
+        if (Array.isArray(rows) && rows.length > 0) {
+          const primary = rows[0];
+          const player = convertCharacterToPlayer({
+            ...primary,
+            id: primary.character_id ?? primary.id,
+          });
+          if (player) {
+            applyPlayerState(player, resolvedId);
+            console.log("[GamePage] 서버 캐릭터 정보 적용", { player, reason });
+          }
+        }
+      } catch (err) {
+        console.warn("[GamePage] 최신 캐릭터 정보 불러오기 실패:", err);
+      }
+    },
+    [applyPlayerState, storageKeyId],
+  );
 
   useEffect(() => {
     return () => {
-      clearImageWait();
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
     };
   }, []);
-
-  useEffect(() => {
-    if (hydratingFromServerRef.current) {
-      hydratingFromServerRef.current = false;
-      conversationReadyRef.current = true;
-      return;
-    }
-    if (!conversationReadyRef.current) {
-      conversationReadyRef.current = true;
-      if (messages.length === 0) {
-        return;
-      }
-    }
-    setIsDirty(true);
-  }, [messages]);
 
   const buildTimestamp = () =>
     new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+  const updateCharacterFromAiPayload = useCallback(
+    async (payload: AiServerResponse, source: string = "unknown") => {
+      const updates = collectPlayerUpdateEntries(payload);
+      if (updates.length === 0) {
+        return;
+      }
+
+      console.log(`[GamePage] 캐릭터 업데이트 감지 (${source}):`, updates);
+
+      let latestSnapshot: Player | null = null;
+      let pendingUpdate:
+        | {
+            snapshot: Player;
+            changes: Record<string, unknown>;
+          }
+        | null = null;
+      setPlayers((prev) => {
+        if (prev.length === 0) return prev;
+        let changed = false;
+        const updatedPlayers = prev.map((player, index) => {
+          const matched = updates.find((candidate) => {
+            const rawId =
+              (candidate.character_id as unknown) ??
+              (candidate.characterId as unknown) ??
+              (candidate.player_id as unknown) ??
+              (candidate.playerId as unknown) ??
+              (candidate.id as unknown);
+            if (rawId == null) return false;
+            return String(rawId) === String(player.id);
+          });
+          const updateSource = matched || (index === 0 ? updates[0] : undefined);
+          if (!updateSource) return player;
+
+          const parsedStats = parseStatsPayload(
+            updateSource.stats ??
+              updateSource.character_stats ??
+              updateSource.attributes ??
+              updateSource.attributes_map,
+          );
+          const statsChanged =
+            parsedStats !== undefined && !areNumberRecordsEqual(parsedStats, player.stats);
+          const nextStats = statsChanged && parsedStats ? parsedStats : player.stats;
+
+          const inventorySource =
+            updateSource.inventory ??
+            updateSource.items ??
+            updateSource.character_inventory ??
+            updateSource.bag;
+          const normalizedInventory =
+            inventorySource !== undefined ? normalizeInventory(inventorySource) : undefined;
+          const inventoryChanged =
+            inventorySource !== undefined &&
+            !areInventoriesEqual(normalizedInventory, player.inventory);
+          const nextInventory =
+            inventoryChanged && normalizedInventory ? normalizedInventory : player.inventory;
+
+          const levelValue =
+            typeof updateSource.level === "number"
+              ? updateSource.level
+              : typeof updateSource.level === "string" && !Number.isNaN(Number(updateSource.level))
+                ? Number(updateSource.level)
+                : player.level;
+
+          const healthValue =
+            typeof updateSource.health === "number"
+              ? updateSource.health
+              : typeof updateSource.currentHealth === "number"
+                ? updateSource.currentHealth
+                : undefined;
+
+          const maxHealthValue =
+            typeof updateSource.maxHealth === "number"
+              ? updateSource.maxHealth
+              : typeof updateSource.max_health === "number"
+                ? updateSource.max_health
+                : undefined;
+
+          let nextMaxHealth = player.maxHealth;
+          if (maxHealthValue !== undefined) {
+            nextMaxHealth = maxHealthValue;
+          }
+
+          let nextHealth = player.health;
+          if (healthValue !== undefined) {
+            nextHealth = healthValue;
+          }
+
+          const healthChanged = nextHealth !== player.health;
+          const maxHealthChanged = nextMaxHealth !== player.maxHealth;
+          const levelChanged = levelValue !== player.level;
+
+          if (
+            !statsChanged &&
+            !inventoryChanged &&
+            !healthChanged &&
+            !maxHealthChanged &&
+            !levelChanged
+          ) {
+            return player;
+          }
+
+          const changes: Record<string, unknown> = {};
+          if (statsChanged && nextStats) {
+            changes.stats = nextStats;
+          }
+          if (inventoryChanged && nextInventory) {
+            changes.inventory = nextInventory;
+          }
+          if (levelChanged) {
+            changes.level = levelValue;
+          }
+          if (healthChanged || maxHealthChanged) {
+            changes.health = nextHealth;
+          }
+          if (updateSource.name !== undefined && updateSource.name !== player.name) {
+            changes.name = updateSource.name;
+          }
+          if (updateSource.class !== undefined && updateSource.class !== player.role) {
+            changes.class = updateSource.class;
+          }
+          if (updateSource.avatar !== undefined && updateSource.avatar !== player.avatar) {
+            changes.avatar = updateSource.avatar;
+          }
+
+          const nextPlayer: Player = {
+            ...player,
+            stats: nextStats,
+            inventory: nextInventory,
+            health: nextHealth,
+            maxHealth: nextMaxHealth,
+            level: levelValue,
+          };
+
+          changed = true;
+          latestSnapshot = nextPlayer;
+          if (!pendingUpdate && Object.keys(changes).length > 0) {
+            pendingUpdate = { snapshot: nextPlayer, changes };
+          }
+          return nextPlayer;
+        });
+
+        return changed ? updatedPlayers : prev;
+      });
+
+      if (latestSnapshot) {
+        const snapshot = latestSnapshot;
+        setSelectedPlayer((prev) => (prev && prev.id === snapshot.id ? snapshot : prev));
+        persistCharacterSnapshot(snapshot);
+      }
+
+      if (pendingUpdate && gameId) {
+        try {
+          const payloadForServer: Record<string, unknown> = { ...pendingUpdate.changes };
+          if (payloadForServer.inventory && Array.isArray(payloadForServer.inventory)) {
+            payloadForServer.inventory = payloadForServer.inventory;
+          }
+          if (payloadForServer.stats && typeof payloadForServer.stats === "object") {
+            payloadForServer.stats = payloadForServer.stats;
+          }
+          if (payloadForServer.health === undefined) {
+            payloadForServer.health = pendingUpdate.snapshot.health;
+          }
+          const response = await axios.patch(
+            `${CHAR_API_URL}/game/${gameId}`,
+            payloadForServer,
+          );
+          const updatedData = response?.data?.data || response?.data;
+          const updatedPlayer = convertCharacterToPlayer(updatedData);
+          if (updatedPlayer) {
+            console.log("[GamePage] AI 캐릭터 업데이트 서버 반영 성공:", updatedPlayer);
+            setPlayers((prev) =>
+              prev.map((player) => (player.id === updatedPlayer.id ? updatedPlayer : player)),
+            );
+            setSelectedPlayer((prev) =>
+              prev && prev.id === updatedPlayer.id ? updatedPlayer : prev,
+            );
+            persistCharacterSnapshot(updatedPlayer);
+          }
+          await fetchLatestCharacter(gameId);
+        } catch (err) {
+          console.error("[GamePage] 캐릭터 상태 동기화 실패:", err);
+        }
+      }
+    },
+    [persistCharacterSnapshot, gameId, fetchLatestCharacter],
+  );
+
   const extractTextFromPayload = (payload: AiServerResponse): string => {
-    const candidates = [payload.response, payload.message, payload.aiResponse];
+    const candidates = [
+      (payload as any).content,
+      payload.response,
+      payload.message,
+      payload.aiResponse,
+    ];
     for (const candidate of candidates) {
       if (typeof candidate === "string" && candidate.trim().length > 0) {
         return candidate.trim();
@@ -178,23 +554,53 @@ export default function GamePage() {
   };
 
   const normalizeImagesFromPayload = (payload: AiServerResponse): MessageImage[] => {
+    const explicitUrls = Array.isArray((payload as any).image_urls)
+      ? (payload as any).image_urls
+      : (payload as any).image_url
+        ? [(payload as any).image_url]
+        : [];
+
+    if (explicitUrls.length > 0) {
+      return explicitUrls
+        .map((url: unknown, index: number) => {
+          if (typeof url !== "string" || url.trim().length === 0) return null;
+          const resolved = resolveStaticUrl(url.trim());
+          if (!resolved) return null;
+          return {
+            id: `image-url-${Date.now()}-${index}`,
+            dataUrl: resolved,
+            mime: "image/png",
+            url: resolved,
+          } as MessageImage;
+        })
+        .filter((img): img is MessageImage => img !== null);
+    }
+
     if (!Array.isArray(payload.images)) return [];
     return payload.images
       .map((img, index) => {
         if (!img || typeof img !== "object") return null;
-        const { data, mime, filename } = img as { data: string; mime?: string; filename?: string };
+        const { data, mime, filename, url } = img as {
+          data?: string;
+          mime?: string;
+          filename?: string;
+          url?: string;
+        };
+        if (typeof url === "string" && url.trim().length > 0) {
+          const resolved = resolveStaticUrl(url.trim());
+          if (!resolved) return null;
+          return {
+            id: filename || `image-${Date.now()}-${index}`,
+            dataUrl: resolved,
+            mime: mime || "image/png",
+            filename,
+            url: resolved,
+          };
+        }
         if (typeof data !== "string" || data.trim().length === 0) return null;
         const safeMime = typeof mime === "string" && mime.trim().length > 0 ? mime : "image/png";
         const cleanBase64 = data.replace(/\s+/g, "");
         if (cleanBase64.length === 0) return null;
-        console.log(
-          "[GamePage] 이미지 데이터 정리:",
-          filename || `image-${index}`,
-          "원본 길이:",
-          data.length,
-          "정리 후 길이:",
-          cleanBase64.length,
-        );
         return {
           id: filename || `image-${Date.now()}-${index}`,
           dataUrl: `data:${safeMime};base64,${cleanBase64}`,
@@ -225,382 +631,151 @@ export default function GamePage() {
       .filter((opt): opt is string => opt !== null);
   };
 
-  const uploadImageIfNeeded = useCallback(
-    async (image: MessageImage | null | undefined): Promise<StoredImageMeta | null> => {
-      if (!image) return null;
-      if (!activeCharacterId || !gameId) return null;
-
-      const normalizedUrl =
-        typeof image.url === "string" && image.url.length > 0
-          ? image.url
-          : typeof image.dataUrl === "string" && !image.dataUrl.startsWith("data:")
-            ? image.dataUrl
-            : null;
-
-      if (normalizedUrl) {
-        return {
-          id: image.id || `img-${Date.now()}`,
-          url: normalizedUrl,
-          mime: image.mime,
-          filename: image.filename,
-        };
-      }
-
-      const cacheKey = image.dataUrl || image.id;
-      if (cacheKey && imageUploadCacheRef.current.has(cacheKey)) {
-        return imageUploadCacheRef.current.get(cacheKey) || null;
-      }
-
-      let base64: string | null = null;
-      let inferredMime = image.mime;
-
-      if (typeof image.dataUrl === "string" && image.dataUrl.startsWith("data:")) {
-        const match = image.dataUrl.match(/^data:([^;]+);base64,(.*)$/);
-        if (match) {
-          inferredMime = inferredMime || match[1];
-          base64 = match[2];
-        }
-      }
-
-      if (!base64) {
-        return null;
-      }
-
-      const body: Record<string, unknown> = {
-        game_id: gameId,
-        mime: inferredMime,
-        filename: image.filename,
-        data: base64,
-      };
-      if (activeCharacterId) {
-        body.character_id = activeCharacterId;
-      }
-
-      const res = await fetch(`${API_BASE_URL}/api/conversations/upload`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        throw new Error(`이미지 업로드 실패: ${res.status}`);
-      }
-
-      const saved = (await res.json()) as StoredImageMeta;
-      const normalized: StoredImageMeta = {
-        id: saved.id || image.id || `img-${Date.now()}`,
-        url: saved.url,
-        mime: saved.mime || inferredMime,
-        filename: saved.filename || image.filename,
-      };
-
-      if (cacheKey) {
-        imageUploadCacheRef.current.set(cacheKey, normalized);
-      }
-
-      return normalized;
-    },
-    [API_BASE_URL, activeCharacterId, gameId]
-  );
-
-  const saveConversation = useCallback(
-    async (options?: { useBeacon?: boolean }) => {
-      if (!gameId || !activeCharacterId) return false;
-
-      const sanitizedMessages: Record<string, unknown>[] = [];
-      for (const msg of messages) {
-        const baseMessage: Record<string, unknown> = {
-          id: msg.id,
-          sender: msg.sender,
-          content: msg.content,
-          timestamp: msg.timestamp,
-          type: msg.type,
-          status: msg.status,
-          prompt: msg.prompt,
-        };
-
-        if (msg.options && msg.options.length > 0) {
-          baseMessage.options = msg.options;
-        }
-
-        if (Array.isArray(msg.images) && msg.images.length > 0) {
-          const processedImages: StoredImageMeta[] = [];
-          for (const image of msg.images) {
-            try {
-              const uploaded = await uploadImageIfNeeded(image);
-              if (uploaded) {
-                processedImages.push(uploaded);
-              }
-            } catch (error) {
-              console.error("이미지 업로드 실패:", error);
-            }
-          }
-          if (processedImages.length > 0) {
-            baseMessage.images = processedImages;
-          }
-        }
-
-        sanitizedMessages.push(baseMessage);
-      }
-
-      const payload = {
-        game_id: gameId,
-        ...(activeCharacterId ? { character_id: activeCharacterId } : {}),
-        session_id: sessionId,
-        title: gameTitle,
-        messages: sanitizedMessages,
-      };
-
-      if (options?.useBeacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
-        try {
-          const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-          const ok = navigator.sendBeacon(`${API_BASE_URL}/api/conversations`, blob);
-          if (ok) {
-            setIsDirty(false);
-            isDirtyRef.current = false;
-          }
-          return ok;
-        } catch (error) {
-          console.error("대화 저장 실패(sendBeacon):", error);
-          return false;
-        }
-      }
-
-      try {
-        setIsSaving(true);
-        const res = await fetch(`${API_BASE_URL}/api/conversations`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          throw new Error(`Failed to save conversation: ${res.status}`);
-        }
-        setIsDirty(false);
-        isDirtyRef.current = false;
-        return true;
-      } catch (error) {
-        console.error("대화 저장 실패:", error);
-        return false;
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [gameId, activeCharacterId, sessionId, gameTitle, messages, uploadImageIfNeeded]
-  );
-
-  useEffect(() => {
-    isDirtyRef.current = isDirty;
-  }, [isDirty]);
-
-  const saveConversationRef = useRef(saveConversation);
-  useEffect(() => {
-    saveConversationRef.current = saveConversation;
-  }, [saveConversation]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!isDirtyRef.current) return;
-      saveConversationRef.current?.({ useBeacon: true });
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handlePopState = async () => {
-      if (!isDirtyRef.current) return;
-      const shouldSave = window.confirm("대화 내용을 저장하고 나가시겠습니까?");
-      if (shouldSave) {
-        const saver = saveConversationRef.current;
-        if (saver) {
-          const ok = await saver();
-          if (!ok) {
-            window.alert("대화 저장에 실패했습니다. 다시 시도해 주세요.");
-          }
-        }
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-
-  // 플레이어 설정 전용 useEffect (쿼리 캐릭터 > 로컬 저장 > 서버 캐릭터 순으로 복원)
+  // 플레이어 설정 전용 useEffect (쿼리 캐릭터 > 로컬 저장 > 서버 캐릭터 순으로 복원, 이후 서버 재조회)
   useEffect(() => {
     const routeGameId = params?.id ? String(params.id) : null;
     const characterParam = searchParams.get("character");
 
-    const applyCharacter = (character: any) => {
-      if (!character) return;
-      const newPlayer: Player = {
-        id: character.id || Date.now(),
-        name: character.name,
-        role: character.class,
-        avatar: character.avatar || "/placeholder-user.jpg",
-        health: 100, maxHealth: 100,
-        mana: character.class?.toLowerCase?.().includes("mage") ? 100 : undefined,
-        maxMana: character.class?.toLowerCase?.().includes("mage") ? 100 : undefined,
-        level: character.level || 1,
-        stats: character.stats ? { ...character.stats } : undefined,
-        inventory: normalizeInventory(character.inventory),
-      };
-      setPlayers([newPlayer]);
-      setConversationLoaded(false);
-      conversationReadyRef.current = false;
-      setIsDirty(false);
-      isDirtyRef.current = false;
-      if (routeGameId && typeof window !== 'undefined') {
-        localStorage.setItem(`lastCharacter:${routeGameId}`, JSON.stringify(character));
-      }
-    };
+    let shouldFetchFromServer = true;
 
-    // 1) 쿼리로 온 캐릭터가 있으면 그걸 사용
+    // 1) 쿼리로 온 캐릭터가 있으면 우선 적용
     if (characterParam) {
       try {
         const character = JSON.parse(decodeURIComponent(characterParam));
-        applyCharacter(character);
-        return;
+        const newPlayer = convertCharacterToPlayer(character);
+        if (newPlayer) {
+          applyPlayerState(newPlayer, routeGameId);
+          shouldFetchFromServer = true;
+        }
       } catch (error) {
         console.error("캐릭터 정보 파싱 실패:", error);
       }
     }
 
-    // 2) 로컬 저장된 마지막 캐릭터 사용
+    // 2) 로컬 저장된 마지막 캐릭터를 즉시 적용
     if (routeGameId && typeof window !== 'undefined') {
       const saved = localStorage.getItem(`lastCharacter:${routeGameId}`);
       if (saved) {
         try {
-          applyCharacter(JSON.parse(saved));
-          return;
+          const newPlayer = convertCharacterToPlayer(JSON.parse(saved));
+          if (newPlayer) {
+            applyPlayerState(newPlayer, routeGameId);
+            shouldFetchFromServer = true;
+          }
         } catch {}
       }
     }
 
-    // 3) 서버에서 해당 게임의 캐릭터 목록을 가져와 첫 캐릭터 사용
-    (async () => {
-      if (!routeGameId) return;
-      try {
-        const res = await axios.get(`http://192.168.26.165:1024/api/characters/game/${routeGameId}`);
-        const rows = res.data?.data || res.data || [];
-        if (Array.isArray(rows) && rows.length > 0) {
-          const c = rows[0];
-          applyCharacter({
-            id: c.character_id,
-            name: c.name,
-            class: c.class,
-            level: c.level ?? 1,
-            avatar: c.avatar || "/placeholder-user.jpg",
-            stats: c.stats,
-            inventory: c.inventory,
-          });
-        }
-      } catch (e) {
-        console.warn("캐릭터 자동 복원 실패", e);
-      }
-    })();
-  }, [searchParams, params]);
+    // 3) 항상 서버에서 최신 캐릭터 정보를 가져와 동기화
+    if (routeGameId && shouldFetchFromServer) {
+      void fetchLatestCharacter(routeGameId, "initial");
+    }
+  }, [searchParams, params, applyPlayerState, fetchLatestCharacter]);
 
   useEffect(() => {
-    if (!gameId || !activeCharacterId || conversationLoaded) return;
-    if (messageCount > 0) {
-      setConversationLoaded(true);
-      return;
-    }
-    (async () => {
+    if (!gameId) return;
+    let cancelled = false;
+
+    const loadHistory = async () => {
+      console.log("[History] 대화 기록 요청 시작", { gameId, aiServerOnline });
       try {
-        const res = await fetch(
-          `${API_BASE_URL}/api/conversations/game/${gameId}?character_id=${encodeURIComponent(activeCharacterId)}`
-        );
+        setHistoryLoading(true);
+        console.log("[History] GET", `${FLASK_AI_SERVICE_URL}/api/history/${gameId}`);
+        const res = await fetch(`${FLASK_AI_SERVICE_URL}/api/history/${gameId}`);
+        console.log("[History] 응답 상태", res.status);
         if (!res.ok) {
           if (res.status !== 404) {
-            throw new Error(`Failed to load conversation: ${res.status}`);
+            throw new Error(`Failed to load history: ${res.status}`);
           }
-          setConversationLoaded(true);
+          if (!cancelled) {
+            setMessages([]);
+          }
+          setAiServerOnline(false);
+          console.warn("[History] 기록 없음 또는 AI 서버 다운", { status: res.status });
           return;
         }
-        const data = await res.json();
-        if (data && Array.isArray(data?.messages) && data.messages.length > 0) {
-          hydratingFromServerRef.current = true;
-          setMessages(
-            data.messages.map((msg: any, index: number): Message => {
-              const images = Array.isArray(msg.images)
-                ? msg.images
-                    .map((image: any, imageIndex: number): MessageImage | null => {
-                      if (!image) return null;
-                      const id =
-                        typeof image.id === "string"
-                          ? image.id
-                          : `image-${Date.now()}-${index}-${imageIndex}`;
-                      const url =
-                        typeof image.url === "string" && image.url.length > 0 ? image.url : undefined;
-                      const rawData =
-                        typeof image.data === "string" && image.data.length > 0 ? image.data : undefined;
-                      const mime =
-                        typeof image.mime === "string" && image.mime.length > 0 ? image.mime : "image/png";
-                      let dataUrl: string | undefined;
-                      if (url) {
-                        dataUrl = resolveStaticUrl(url);
-                      } else if (rawData) {
-                        dataUrl = `data:${mime};base64,${rawData}`;
-                      } else if (typeof image.dataUrl === "string" && image.dataUrl.length > 0) {
-                        dataUrl = image.dataUrl;
-                      } else {
-                        return null;
-                      }
-                      return {
-                        id,
-                        dataUrl,
-                        mime,
-                        filename:
-                          typeof image.filename === "string" && image.filename.length > 0
-                            ? image.filename
-                            : undefined,
-                        url: resolveStaticUrl(url),
-                      };
-                    })
-                    .filter((img): img is MessageImage => img !== null)
-                : undefined;
-
-              return {
-                id:
-                  typeof msg.id === "number"
-                    ? msg.id
-                    : typeof msg.id === "string"
-                      ? Number(msg.id) || Date.now() + index
-                      : Date.now() + index,
-                sender: typeof msg.sender === "string" ? msg.sender : "시스템",
-                content: typeof msg.content === "string" ? msg.content : "",
-                timestamp: typeof msg.timestamp === "string" ? msg.timestamp : buildTimestamp(),
-                type:
-                  msg.type === "system" || msg.type === "dice" || msg.type === "combat" ? msg.type : "chat",
-                images,
-                status: typeof msg.status === "string" ? msg.status : undefined,
-                options: Array.isArray(msg.options) ? msg.options : undefined,
-              };
-            })
-          );
-          setIsDirty(false);
-          isDirtyRef.current = false;
-        }
+        const json = await res.json();
+        console.log("[History] API 응답", json);
+        const entries = Array.isArray(json?.data)
+          ? json.data
+          : Array.isArray(json?.history)
+            ? json.history
+            : Array.isArray(json?.content)
+              ? json.content
+              : Array.isArray(json)
+                ? json
+                : [];
+        setAiServerOnline(true);
+        if (cancelled) return;
+        const mapped: Message[] = entries
+          .sort((a: any, b: any) => (a?.sequence_number ?? 0) - (b?.sequence_number ?? 0))
+          .map((entry: any, index: number) => {
+            const seq = typeof entry?.sequence_number === "number" ? entry.sequence_number : index;
+            const role = typeof entry?.role === "string" ? entry.role : "assistant";
+            const sender = role === "assistant" ? "AI" : role === "user" ? "플레이어" : role;
+            const imageUrl = resolveStaticUrl(entry?.image_url);
+            return {
+              id: seq,
+              sender,
+              content: typeof entry?.content === "string" ? entry.content : "",
+              timestamp: typeof entry?.timestamp === "string" ? entry.timestamp : buildTimestamp(),
+              type: "chat",
+              images: imageUrl
+                ? [
+                    {
+                      id: `history-image-${seq}`,
+                      dataUrl: imageUrl,
+                      mime: "image/png",
+                      url: imageUrl,
+                    },
+                  ]
+                : undefined,
+            } as Message;
+          });
+        setMessages(mapped);
+        console.log("[History] 대화 기록 불러오기 완료", { count: mapped.length });
+        setActiveOptions([]);
       } catch (error) {
-        console.error("대화 기록 불러오기 실패:", error);
+        if (!cancelled) {
+          console.error("대화 기록 불러오기 실패:", error);
+          setAiServerOnline(false);
+          setMessages([
+            {
+              id: Date.now(),
+              sender: "시스템",
+              content: "대화 기록을 불러올 수 없습니다. AI 서버 상태를 확인해주세요.",
+              timestamp: buildTimestamp(),
+              type: "system",
+            },
+          ]);
+        }
       } finally {
-        setConversationLoaded(true);
+        if (!cancelled) {
+          setHistoryLoading(false);
+          console.log("[History] 로딩 종료");
+        }
       }
-    })();
-  }, [gameId, activeCharacterId, conversationLoaded, messageCount]);
+    };
+
+    loadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [gameId, aiServerOnline]);
 
   // AI 세션 시작 + 시나리오 로딩
   useEffect(() => {
     const startSessionAndFetchScenario = async () => {
+      if (!aiServerOnline) {
+        console.warn("[Session] AI 서버 오프라인 상태, 세션 생성을 건너뜁니다.");
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
       try {
         const templateTitle = searchParams.get("title") || "기본 던전";
+        console.log("[Session] 세션 초기화 시작", { templateTitle });
 
         // 1) 세션 시작 (게임/유저/캐릭터 ID 전달)
         const routeGameId = params?.id ? String(params.id) : null;
@@ -620,13 +795,8 @@ export default function GamePage() {
         if (typeof window !== "undefined") {
           initialSessionId = localStorage.getItem("sessionId");
           if (!initialSessionId) {
-            // 최신 브라우저: crypto.randomUUID(), 없으면 Date.now() 등으로 대체
             initialSessionId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : `s-${Date.now()}`;
-            localStorage.setItem("sessionId", initialSessionId);
-            console.log("새 세션 ID 생성:", initialSessionId);
           }
-          setSessionId(initialSessionId);
-          console.log("[Session] 기존 세션 ID 사용:", initialSessionId);
         }
 
         console.log("[Request] game_id:", resolvedGameId);
@@ -637,11 +807,16 @@ export default function GamePage() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ game_id: resolvedGameId, session_id: initialSessionId }),
         });
-        
+
         const startData = await startRes.json();
         if (!startRes.ok) throw new Error(startData?.error || "세션 시작 실패");
         const newSessionId: string = startData.sessionId || startData.id || String(Date.now());
+        if (typeof window !== "undefined") {
+          localStorage.setItem("sessionId", newSessionId);
+        }
         setSessionId(newSessionId);
+        setAiServerOnline(true);
+        console.log("[Session] 세션 생성 성공", { sessionId: newSessionId });
 
         // 2) 초기 시나리오 요청 (AI 서버 HTTP)
         // const url = `${FLASK_AI_SERVICE_URL}/api/ai/generate-scenario?timestamp=${Date.now()}`;
@@ -670,12 +845,15 @@ export default function GamePage() {
             type: "system",
           },
         ]);
+        setSessionId(null);
+        setIsAwaitingResponse(false);
+        setAiServerOnline(false);
       } finally {
         setIsLoading(false);
       }
     };
     startSessionAndFetchScenario();
-  }, [searchParams]);
+  }, [searchParams, aiServerOnline]);
 
   // WebSocket 연결 관리
   useEffect(() => {
@@ -687,169 +865,63 @@ export default function GamePage() {
         if (evt.type !== "message") return;
         const m = evt.data;
         if (m.kind === "ai_response") {
+          const origin = (m as typeof m & { source?: string }).source ?? "ws:ai_response";
           const payload: AiServerResponse = m.payload || {};
-          console.log("[GamePage] AI 응답 수신:", payload);
+          console.log("[GamePage] AI 응답 수신:", { origin, payload });
 
-          const timestamp = buildTimestamp();
+          if (payload && typeof payload === "object") {
+            void updateCharacterFromAiPayload(payload, origin);
+          }
+          console.log("[GamePage] 최신 캐릭터 정보 재요청", { origin, gameId });
+          void fetchLatestCharacter(gameId, origin);
+
+          const timestamp = typeof (payload as any).timestamp === "string"
+            ? (payload as any).timestamp
+            : buildTimestamp();
           const text = extractTextFromPayload(payload);
           const images = normalizeImagesFromPayload(payload);
           const options = normalizeOptionsFromPayload(payload);
-          const hasOptions = options.length > 0;
-          if (hasOptions) {
-            console.log("[GamePage] 옵션 정리 결과:", options);
-          }
 
-          const incomingPrompt =
-            typeof payload.prompt === "string" && payload.prompt.trim().length > 0
-              ? payload.prompt.trim()
-              : undefined;
-          const shouldShowImagePlaceholder =
-            payload.need_image === true &&
-            !!payload.image_info &&
-            typeof payload.image_info === "object" &&
-            (payload.image_info as { should_generate?: boolean }).should_generate === true &&
-            images.length === 0;
+          const promptSummary =
+            typeof (payload as any).prompt === "string" && (payload as any).prompt.trim().length > 0
+              ? `[생성된 이미지]\n프롬프트: ${(payload as any).prompt.trim()}`
+              : "";
 
-          let promptKey: string | null = incomingPrompt ?? pendingImagePromptRef.current ?? null;
-          const pendingBefore = pendingImagePromptRef.current;
-          let keepAwaiting = false;
+          const messageContent =
+            text.length > 0
+              ? text
+              : promptSummary.length > 0
+                ? promptSummary
+                : images.length > 0
+                  ? "이미지가 도착했습니다."
+                  : "";
+
+          const newMessage: Message = {
+            id: Date.now(),
+            sender: "AI",
+            content: messageContent,
+            timestamp,
+            type: "chat",
+          };
 
           if (images.length > 0) {
-            console.log("[GamePage] 이미지 응답 도착, 대기 해제");
-            clearImageWait();
-            if (!promptKey && pendingBefore) {
-              promptKey = pendingBefore;
-            }
-            keepAwaiting = false;
-          } else if (shouldShowImagePlaceholder) {
-            const key = incomingPrompt || `__pending_${Date.now()}`;
-            pendingImagePromptRef.current = key;
-            promptKey = key;
-            keepAwaiting = true;
-            if (imageWaitRef.current) {
-              clearTimeout(imageWaitRef.current);
-            }
-            imageWaitRef.current = setTimeout(() => {
-              console.warn("[GamePage] 이미지 응답 대기 타임아웃이 발생했습니다.");
-              imageWaitRef.current = null;
-              pendingImagePromptRef.current = null;
-              setIsAwaitingResponse(false);
-            }, IMAGE_WAIT_TIMEOUT_MS);
-          } else {
-            clearImageWait();
-            if (!promptKey && pendingBefore) {
-              promptKey = pendingBefore;
-            }
-            keepAwaiting = false;
+            newMessage.images = images;
           }
 
-          setMessages((prev) => {
-            const next = [...prev];
-            const baseId = Date.now();
-            let offset = 0;
-            const nextId = () => baseId + offset++;
+          if (options.length > 0) {
+            newMessage.options = options;
+            setActiveOptions(options);
+          } else {
+            setActiveOptions([]);
+          }
 
-            const findTargetIndex = () => {
-              for (let i = next.length - 1; i >= 0; i--) {
-                const candidate = next[i];
-                if (candidate.sender !== "시스템") continue;
-                if (promptKey) {
-                  if (candidate.prompt === promptKey) return i;
-                } else {
-                  return i;
-                }
-              }
-              return -1;
-            };
-
-            const messagePrompt = promptKey ?? incomingPrompt;
-            let targetIndex = findTargetIndex();
-
-            if (targetIndex === -1) {
-              const initialContent =
-                text.length > 0
-                  ? text
-                  : shouldShowImagePlaceholder
-                    ? "이미지 생성 중입니다."
-                    : images.length > 0
-                      ? "생성된 이미지가 도착했습니다."
-                      : "";
-              const newMessage: Message = {
-                id: nextId(),
-                sender: "시스템",
-                content: initialContent,
-                timestamp,
-                type: "chat",
-              };
-              if (messagePrompt) newMessage.prompt = messagePrompt;
-              if (shouldShowImagePlaceholder) newMessage.status = "image-generating";
-              if (images.length > 0) {
-                newMessage.images = [...images];
-                console.log(
-                  "[GamePage] 새 메시지에 이미지 추가:",
-                  images.map((img) => img.filename || img.id),
-                );
-              }
-              if (hasOptions) newMessage.options = options;
-              next.push(newMessage);
-              console.log("[GamePage] 새 시스템 메시지 생성:", newMessage);
-            } else {
-              const original = next[targetIndex];
-              const updated: Message = {
-                ...original,
-                timestamp,
-                sender: "시스템",
-                type: "chat",
-              };
-              if (messagePrompt && !updated.prompt) {
-                updated.prompt = messagePrompt;
-              }
-              if (text.length > 0) {
-                const existing = (updated.content ?? "").trim();
-                updated.content = existing.length > 0 ? `${existing}\n\n${text}` : text;
-              } else if (
-                (!updated.content || updated.content.trim().length === 0) &&
-                shouldShowImagePlaceholder
-              ) {
-                updated.content = "이미지 생성 중입니다.";
-              }
-
-              if (shouldShowImagePlaceholder) {
-                updated.status = "image-generating";
-              } else if (images.length > 0) {
-                delete updated.status;
-              }
-
-              if (images.length > 0) {
-                const mergedImages = [...(updated.images ?? [])];
-                for (const image of images) {
-                  mergedImages.push(image);
-                  console.log("[GamePage] 이미지 추가:", image.filename || image.id);
-                }
-                updated.images = mergedImages;
-                updated.status = undefined;
-                updated.content = updated.content?.replace("이미지 생성 중입니다.", "").trim() || "";
-              }
-
-              if (hasOptions) {
-                updated.options = options;
-              } else if (updated.options) {
-                delete updated.options;
-              }
-
-              next[targetIndex] = updated;
-              console.log("[GamePage] 시스템 메시지 업데이트:", updated);
-            }
-
-            return next;
-          });
-
-          setActiveOptions(hasOptions ? options : []);
-          setIsAwaitingResponse(keepAwaiting);
+          setMessages((prev) => [...prev, newMessage]);
+          setIsAwaitingResponse(false);
           return;
         }
 
         if (m.kind === "chat") {
+          console.log("[GamePage] chat 이벤트 수신:", m);
           if (m.role === "assistant") {
             setIsAwaitingResponse(false);
           }
@@ -857,19 +929,20 @@ export default function GamePage() {
             ...prev,
             {
               id: Date.now(),
-              sender: m.role === "assistant" ? "시스템" : "플레이어",
+              sender: m.role === "assistant" ? "AI" : "플레이어",
               content: m.content,
               timestamp: buildTimestamp(),
-              type: m.role === "system" ? "system" : "chat",
+              type: m.role === "assistant" ? "chat" : "system",
             },
           ]);
         } else if (m.kind === "image") {
+          console.log("[GamePage] image 이벤트 수신:", m);
           setIsAwaitingResponse(false);
           setMessages((prev) => [
             ...prev,
             {
               id: Date.now(),
-              sender: "시스템",
+              sender: "AI",
               content: `이미지 생성됨 (${m.mime})`,
               timestamp: buildTimestamp(),
               type: "system",
@@ -882,8 +955,13 @@ export default function GamePage() {
     });
     client.connect();
     socketRef.current = client;
-    return () => client.close();
-  }, [sessionId, gameId, params]);  // ✅ params도 의존성 배열에 추가
+    return () => {
+      client.close();
+      if (socketRef.current === client) {
+        socketRef.current = null;
+      }
+    };
+  }, [sessionId, gameId, updateCharacterFromAiPayload, fetchLatestCharacter]);
 
 
   // 채팅 메시지 스크롤
@@ -921,7 +999,6 @@ export default function GamePage() {
     setActiveOptions([]);
     setMessage("");
     setIsAwaitingResponse(true);
-    clearImageWait();
 
     const client = socketRef.current;
     if (!client) {
@@ -971,23 +1048,6 @@ export default function GamePage() {
     console.log("[GamePage] 옵션 선택:", option);
     sendChatMessage(option);
   };
-
-  const handleRequestExit = useCallback(async () => {
-    if (isDirty) {
-      const shouldSave = window.confirm("대화 내용을 저장하시겠습니까?");
-      if (shouldSave) {
-        const ok = await saveConversation();
-        if (!ok) {
-          window.alert("대화 저장에 실패했습니다. 다시 시도해 주세요.");
-          return;
-        }
-      } else {
-        setIsDirty(false);
-        isDirtyRef.current = false;
-      }
-    }
-    router.back();
-  }, [isDirty, saveConversation, router]);
 
   if (isLoading) {
     return (
@@ -1066,67 +1126,36 @@ export default function GamePage() {
       
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* 상단 제목 영역 */}
-        <div className="shrink-0 border-b bg-black/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-2xl font-bold text-foreground">{gameTitle}</h3>
-            {isDirty && (
-              <p className="text-xs text-muted-foreground mt-1">저장되지 않은 대화가 있습니다.</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isSaving || !isDirty || players.length === 0}
-              onClick={async () => {
-                const ok = await saveConversation();
-                if (!ok) {
-                  window.alert("대화 저장에 실패했습니다. 다시 시도해 주세요.");
-                }
-              }}
-            >
-              {isSaving ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-2 h-4 w-4" />
-              )}
-              대화 저장
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                void handleRequestExit();
-              }}
-            >
-              <LogOut className="mr-2 h-4 w-4" /> 나가기
-            </Button>
-          </div>
+        <div className="shrink-0 border-b bg-black/10 p-4">
+          <h3 className="text-2xl font-bold text-foreground">{gameTitle}</h3>
+          {historyLoading && (
+            <p className="text-xs text-muted-foreground mt-1">기록을 불러오는 중...</p>
+          )}
         </div>
 
         {/* 하단 채팅 영역 */}
         <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
           <div className="flex-1 overflow-y-auto pr-2 space-y-4">
             {messages.map((msg) => {
-              const isSystem = msg.sender === "시스템";
+              const isPlayer = msg.sender === "플레이어";
               const bubbleClass = cn(
                 "rounded-lg p-3 w-full max-w-xl",
-                isSystem ? "bg-muted text-foreground" : "bg-primary text-primary-foreground"
+                isPlayer ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
               );
               return (
                 <div
                   key={msg.id}
                   className={cn(
                     "flex items-start gap-3 max-w-[85%]",
-                    isSystem ? "mr-auto" : "ml-auto flex-row-reverse"
+                    isPlayer ? "ml-auto flex-row-reverse" : "mr-auto"
                   )}
                 >
                   <Avatar className="h-8 w-8">
                     <AvatarImage
                       src={
-                        isSystem
-                          ? undefined
-                          : players.find((p) => p.name === msg.sender)?.avatar
+                        isPlayer
+                          ? players.find((p) => p.name === msg.sender)?.avatar
+                          : undefined
                       }
                     />
                     <AvatarFallback>{msg.sender[0]}</AvatarFallback>

@@ -83,10 +83,22 @@ async function ensureCharacterExists(characterId, { gameId, userId, name, classN
 
   await ensureGameExists(normalizedGameId);
 
+  const statsObject = parseJson(serializedStats ?? "{}", {});
+  const computedHealth = (() => {
+    const base = 100;
+    if (!statsObject || typeof statsObject !== "object") return base;
+    let total = 0;
+    for (const value of Object.values(statsObject)) {
+      const num = Number(value);
+      if (!Number.isNaN(num)) total += num;
+    }
+    return Math.round(base + base * (total / 100));
+  })();
+
   try {
     await pool.query(
-      `INSERT INTO ai_characters (character_id, game_id, user_id, name, class, level, stats, inventory, avatar)
-       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?)`,
+      `INSERT INTO ai_characters (character_id, game_id, user_id, name, class, level, stats, inventory, avatar, health)
+       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ?)`,
       [
         normalizedCharacterId,
         normalizedGameId,
@@ -97,6 +109,7 @@ async function ensureCharacterExists(characterId, { gameId, userId, name, classN
         serializedStats ?? "{}",
         serializedInventory ?? "[]",
         avatar || null,
+        computedHealth,
       ]
     );
   } catch (err) {
