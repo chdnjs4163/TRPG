@@ -93,7 +93,38 @@ const MESSAGES_TABLE_SQL = `
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `;
 
+async function columnExists(table, column) {
+  const [rows] = await pool.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [column]);
+  return rows.length > 0;
+}
+
+async function indexExists(table, indexName) {
+  const [rows] = await pool.query(`SHOW INDEX FROM ${table} WHERE Key_name = ?`, [indexName]);
+  return rows.length > 0;
+}
+
+async function ensureUserProfileSchema() {
+  if (!(await columnExists("users", "nickname"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN nickname VARCHAR(50) NULL");
+  }
+  if (!(await columnExists("users", "avatar_url"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(255) NULL");
+  }
+  if (!(await columnExists("users", "bio"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN bio TEXT NULL");
+  }
+  if (!(await columnExists("users", "updated_at"))) {
+    await pool.query("ALTER TABLE users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+  }
+  await pool.query("UPDATE users SET nickname = username WHERE (nickname IS NULL OR nickname = '')");
+  if (!(await indexExists("users", "idx_users_nickname"))) {
+    await pool.query("ALTER TABLE users ADD UNIQUE INDEX idx_users_nickname (nickname)");
+  }
+}
+
 async function ensureCoreTables() {
+  await ensureUserProfileSchema();
+
   const statements = [
     GAMES_TABLE_SQL,
     CHARACTERS_TABLE_SQL,

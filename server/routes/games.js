@@ -12,6 +12,8 @@ const {
 const charactersModule = require("./characters");
 const getCharactersForGame = charactersModule.getCharactersForGame;
 const mapCharacter = charactersModule.mapCharacter;
+const calculateHealth = charactersModule.calculateHealth;
+const resolveHealthColumnInfo = charactersModule.resolveHealthColumnInfo;
 const gameTitlesModule = require("./game_titles");
 const fetchTitleById = gameTitlesModule.fetchTitleById;
 const { serializeScenario } = require("../utils/scenario");
@@ -432,9 +434,19 @@ router.post("/:gameId/characters", async (req, res) => {
 
     await ensureGameExists(gameId);
 
+    const statsObject = parseJson(serializedStats, {});
+    const computedHealth = calculateHealth(statsObject);
+    const healthPayload = { current: computedHealth, max: computedHealth };
+    const healthInfo = await resolveHealthColumnInfo();
+    const columnName = healthInfo?.name || "health";
+    const placeholder = healthInfo?.isJson ? "CAST(? AS JSON)" : "?";
+    const healthValue = healthInfo?.isJson
+      ? JSON.stringify(healthPayload)
+      : Math.round(computedHealth);
+
     await pool.query(
-      `INSERT INTO ai_characters (character_id, game_id, user_id, name, class, level, stats, inventory, avatar)
-       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?)`,
+      `INSERT INTO ai_characters (character_id, game_id, user_id, name, class, level, stats, inventory, avatar, ${columnName})
+       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ${placeholder})`,
       [
         newCharacterId,
         gameId,
@@ -445,6 +457,7 @@ router.post("/:gameId/characters", async (req, res) => {
         serializedStats,
         serializedInventory,
         avatar ? String(avatar) : null,
+        healthValue,
       ]
     );
 

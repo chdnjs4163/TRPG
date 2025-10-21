@@ -38,6 +38,7 @@ interface Player {
 // ... 기타 필요한 인터페이스
 
 const FLASK_AI_SERVICE_URL = "http://192.168.26.165:5001";
+const AVATAR_UPDATED_EVENT = "trpg-avatar-updated";
 
 export default function GamePage() {
   const searchParams = useSearchParams();
@@ -58,11 +59,18 @@ export default function GamePage() {
     if (characterParam) {
       try {
         const character = JSON.parse(decodeURIComponent(characterParam));
+        const storedAvatar =
+          typeof window !== "undefined" ? localStorage.getItem("avatarUrl") : null;
         const newPlayer: Player = {
           id: character.id || Date.now(),
           name: character.name,
           role: character.class,
-          avatar: character.avatar,
+          avatar:
+            (typeof character.avatar === "string" && character.avatar.trim().length > 0
+              ? character.avatar
+              : storedAvatar && storedAvatar.trim().length > 0
+                ? storedAvatar
+                : "/placeholder-user.jpg"),
           health: 100, maxHealth: 100,
           mana: character.class.toLowerCase().includes("mage") ? 100 : undefined,
           maxMana: character.class.toLowerCase().includes("mage") ? 100 : undefined,
@@ -123,6 +131,33 @@ export default function GamePage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleAvatarUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<string | null | undefined>).detail ?? "";
+      const trimmed = typeof detail === "string" ? detail.trim() : "";
+      const nextAvatar =
+        trimmed.length > 0
+          ? trimmed
+          : (typeof window !== "undefined" ? localStorage.getItem("avatarUrl")?.trim() ?? "" : "");
+      const resolved = nextAvatar.length > 0 ? nextAvatar : "/placeholder-user.jpg";
+      setPlayers((prev) => {
+        if (prev.length === 0) return prev;
+        let changed = false;
+        const updated = prev.map((player, index) => {
+          if (index !== 0) return player;
+          if (player.avatar === resolved) return player;
+          changed = true;
+          return { ...player, avatar: resolved };
+        });
+        return changed ? updated : prev;
+      });
+    };
+    window.addEventListener(AVATAR_UPDATED_EVENT, handleAvatarUpdated as EventListener);
+    return () =>
+      window.removeEventListener(AVATAR_UPDATED_EVENT, handleAvatarUpdated as EventListener);
+  }, []);
+
   const handleSendMessage = async () => { /* 메시지 전송 로직 */ };
 
   if (isLoading) {
@@ -136,7 +171,7 @@ export default function GamePage() {
   return (
     <div className="flex h-screen bg-background text-foreground">
       <aside className="w-60 border-r bg-card p-4 overflow-y-auto">
-        <h2 className="text-lg font-semibold mb-4">플레이어</h2>
+        <h2 className="text-lg font-semibold mb-4">캐릭터 이름</h2>
         <div className="space-y-4">
           {players.map((player) => (
             <Card key={player.id}>

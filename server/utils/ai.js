@@ -5,6 +5,52 @@ const uuid = typeof randomUUID === "function"
   ? randomUUID
   : () => `id-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 
+const HEALTH_COLUMN_CANDIDATES = ["health", "health_json"];
+let cachedHealthColumnInfo = null;
+
+async function resolveHealthColumnInfo() {
+  if (cachedHealthColumnInfo) return cachedHealthColumnInfo;
+  try {
+    const placeholders = HEALTH_COLUMN_CANDIDATES.map(() => "?").join(",");
+    const [rows] = await pool.query(
+      `SELECT COLUMN_NAME, DATA_TYPE
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'ai_characters'
+         AND COLUMN_NAME IN (${placeholders})
+       ORDER BY FIELD(COLUMN_NAME, ${HEALTH_COLUMN_CANDIDATES.map(() => "?").join(",")})
+       LIMIT 1`,
+      [...HEALTH_COLUMN_CANDIDATES, ...HEALTH_COLUMN_CANDIDATES]
+    );
+    if (rows.length > 0) {
+      const row = rows[0];
+      const dataType = (row.DATA_TYPE || row.data_type || "").toString().toLowerCase();
+      cachedHealthColumnInfo = {
+        name: row.COLUMN_NAME || row.column_name,
+        isJson: dataType === "json",
+      };
+      return cachedHealthColumnInfo;
+    }
+  } catch (err) {
+    if (err?.code !== "ER_NO_SUCH_TABLE") {
+      throw err;
+    }
+  }
+
+  for (const column of HEALTH_COLUMN_CANDIDATES) {
+    try {
+      await pool.query(`SELECT ${column} FROM ai_characters LIMIT 1`);
+      cachedHealthColumnInfo = { name: column, isJson: column !== "health" };
+      return cachedHealthColumnInfo;
+    } catch (err) {
+      if (err?.code !== "ER_BAD_FIELD_ERROR") {
+        throw err;
+      }
+    }
+  }
+  return null;
+}
+
 function normalizeId(value) {
   if (value === undefined || value === null) return null;
   return String(value);
@@ -96,9 +142,17 @@ async function ensureCharacterExists(characterId, { gameId, userId, name, classN
   })();
 
   try {
+    const healthPayload = { current: computedHealth, max: computedHealth };
+    const healthInfo = await resolveHealthColumnInfo();
+    const columnName = healthInfo?.name || "health";
+    const placeholder = healthInfo?.isJson ? "CAST(? AS JSON)" : "?";
+    const healthValue = healthInfo?.isJson
+      ? JSON.stringify(healthPayload)
+      : Math.round(computedHealth);
+
     await pool.query(
-      `INSERT INTO ai_characters (character_id, game_id, user_id, name, class, level, stats, inventory, avatar, health)
-       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ?)`,
+      `INSERT INTO ai_characters (character_id, game_id, user_id, name, class, level, stats, inventory, avatar, ${columnName})
+       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ${placeholder})`,
       [
         normalizedCharacterId,
         normalizedGameId,
@@ -109,7 +163,7 @@ async function ensureCharacterExists(characterId, { gameId, userId, name, classN
         serializedStats ?? "{}",
         serializedInventory ?? "[]",
         avatar || null,
-        computedHealth,
+        healthValue,
       ]
     );
   } catch (err) {

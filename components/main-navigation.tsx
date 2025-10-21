@@ -4,26 +4,19 @@
 
 import type React from "react";
 
-import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import {
   Home,
-  Search,
   BookOpen,
   Gamepad2,
   FileText,
-  ImageIcon,
-  Menu,
   User,
   Settings,
   History,
-  BookMarked,
 } from "lucide-react";
 
 interface NavItem {
@@ -33,14 +26,21 @@ interface NavItem {
   content?: React.ReactNode;
 }
 
-interface MainNavigationProps {
-  onNavItemClick?: (item: NavItem) => void;
+interface CategoryInput extends NavItem {
+  theme: string;
 }
 
-export function MainNavigation({ onNavItemClick }: MainNavigationProps) {
+interface MainNavigationProps {
+  onNavItemClick?: (item: NavItem) => void;
+  themes?: { theme: string; titles: { id: number; title: string }[] }[];
+}
+
+export function MainNavigation({ onNavItemClick, themes = [] }: MainNavigationProps) {
+
   const pathname = usePathname();
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
+
+  const decodedPathname = decodeURIComponent(pathname);
 
   const mainNavItems: NavItem[] = [
     {
@@ -61,28 +61,21 @@ export function MainNavigation({ onNavItemClick }: MainNavigationProps) {
     
   ];
 
-  const categoryItems: NavItem[] = [
-    {
-      title: "판타지",
-      href: "/category/fantasy",
-      icon: <Gamepad2 className="w-5 h-5" />,
-    },
-    {
-      title: "SF",
-      href: "/category/sci-fi",
-      icon: <Gamepad2 className="w-5 h-5" />,
-    },
-    {
-      title: "호러",
-      href: "/category/horror",
-      icon: <Gamepad2 className="w-5 h-5" />,
-    },
-    {
-      title: "모험",
-      href: "/category/adventure",
-      icon: <Gamepad2 className="w-5 h-5" />,
-    },
+  const defaultCategoryItems: CategoryInput[] = [
+    { title: "판타지", href: "/category/fantasy", icon: <Gamepad2 className="w-5 h-5" />, theme: "판타지" },
+    { title: "SF", href: "/category/sci-fi", icon: <Gamepad2 className="w-5 h-5" />, theme: "SF" },
+    { title: "호러", href: "/category/horror", icon: <Gamepad2 className="w-5 h-5" />, theme: "호러" },
+    { title: "모험", href: "/category/adventure", icon: <Gamepad2 className="w-5 h-5" />, theme: "모험" },
   ];
+
+  const categoryItems: CategoryInput[] = themes.length > 0
+    ? themes.map((group) => ({
+        title: group.theme,
+        href: `/category/${encodeURIComponent(group.theme)}`,
+        icon: <Gamepad2 className="w-5 h-5" />,
+        theme: group.theme,
+      }))
+    : defaultCategoryItems;
 
   const guideItems: NavItem[] = [
     {
@@ -100,7 +93,6 @@ export function MainNavigation({ onNavItemClick }: MainNavigationProps) {
   const handleNavItemClick = (item: NavItem) => {
     if (onNavItemClick) {
       onNavItemClick(item);
-      setIsOpen(false);
     }
   };
 
@@ -108,12 +100,7 @@ export function MainNavigation({ onNavItemClick }: MainNavigationProps) {
     <>
       <div className="hidden md:flex flex-col w-64 border-r bg-background">
         <div className="p-4">
-          <div className="flex items-center gap-2 mb-6">
-            <Gamepad2 className="w-6 h-6" />
-            <h2 className="text-xl font-bold">TRPG 플랫폼</h2>
-          </div>
-
-          <ScrollArea className="h-[calc(100vh-180px)]">
+          <ScrollArea className="mt-4 h-[calc(100vh-220px)]">
             <div className="space-y-6">
               <nav className="flex flex-col space-y-1">
                 {mainNavItems.map((item) => (
@@ -138,25 +125,54 @@ export function MainNavigation({ onNavItemClick }: MainNavigationProps) {
 
               <div>
                 <h3 className="mb-2 px-3 text-sm font-semibold">카테고리</h3>
-                <nav className="flex flex-col space-y-1">
-                  {categoryItems.map((item) => (
-                    <Button
-                      key={item.href}
-                      variant="ghost"
-                      asChild
-                      className={cn(
-                        "justify-start gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                        pathname === item.href
-                          ? "bg-accent text-accent-foreground"
-                          : "hover:bg-accent/50 hover:text-accent-foreground"
-                      )}
-                    >
-                      <Link href={item.href}>
-                        {item.icon}
-                        {item.title}
-                      </Link>
-                    </Button>
-                  ))}
+                <nav className="flex flex-col space-y-2">
+                  {categoryItems.length === 0 ? (
+                    <p className="px-3 text-xs text-muted-foreground">표시할 테마가 없습니다.</p>
+                  ) : (
+                    categoryItems.map((item) => (
+                      <div key={item.href} className="px-2">
+                        <Button
+                          variant="ghost"
+                          className={cn(
+                            "w-full justify-start gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                            decodedPathname === decodeURIComponent(item.href)
+                              ? "bg-accent text-accent-foreground"
+                              : "hover:bg-accent/50 hover:text-accent-foreground"
+                          )}
+                          onClick={() => {
+                            if (onNavItemClick) onNavItemClick(item);
+                            router.push(item.href);
+                          }}
+                        >
+                          {item.icon}
+                          <span className="flex-1 text-left capitalize">{item.title}</span>
+                        </Button>
+                        {item.theme && (
+                          <div className="ml-10 mt-1 space-y-1">
+                            {(themes.find((theme) => theme.theme === item.theme)?.titles || [])
+                              .slice(0, 5)
+                              .map((title) => (
+                                <Button
+                                  key={title.id}
+                                  variant="link"
+                                  className="w-full justify-start px-0 text-xs text-muted-foreground hover:text-foreground"
+                                  onClick={() => {
+                                    onNavItemClick?.({
+                                      title: item.title,
+                                      href: item.href,
+                                      icon: item.icon,
+                                    });
+                                    router.push(`/template/${title.id}`);
+                                  }}
+                                >
+                                  · {title.title}
+                                </Button>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
                 </nav>
               </div>
 

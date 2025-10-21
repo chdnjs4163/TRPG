@@ -3,7 +3,7 @@
 "use client";
 import React from "react";
 import axios from "axios";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { AiWebSocketClient, type AiServerResponse } from "@/lib/ws";
 import { AI_SERVER_HTTP_URL, API_BASE_URL } from "@/app/config";
@@ -14,15 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Send } from "lucide-react";
+import { ChevronDown, ChevronUp, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const STAT_LABELS: Record<string, string> = {
@@ -52,6 +44,27 @@ const normalizeInventory = (value: any): any[] => {
   return value != null ? [value] : [];
 };
 
+const DEFAULT_PLAYER_AVATAR = "/placeholder-user.jpg";
+const AVATAR_UPDATED_EVENT = "trpg-avatar-updated";
+
+const getStoredProfileAvatar = (): string | null => {
+  if (typeof window === "undefined") return null;
+  const stored = localStorage.getItem("avatarUrl");
+  if (!stored) return null;
+  const trimmed = stored.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const resolvePlayerAvatar = (candidate?: unknown): string => {
+  if (typeof candidate === "string") {
+    const trimmed = candidate.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+  return getStoredProfileAvatar() ?? DEFAULT_PLAYER_AVATAR;
+};
+
 const resolveStaticUrl = (url?: string | null): string | undefined => {
   if (!url || typeof url !== "string" || url.length === 0) return undefined;
   if (/^https?:\/\//i.test(url)) return url;
@@ -64,6 +77,118 @@ const calculateHealthFromStats = () => {
   return base;
 };
 
+const clampPercentage = (value: number): number => Math.min(100, Math.max(0, value));
+
+const computePercent = (value: number | undefined, max: number | undefined): number => {
+  if (!Number.isFinite(value) || !Number.isFinite(max) || !max || max <= 0) return 0;
+  return clampPercentage((value / max) * 100);
+};
+
+const coerceNumber = (value: unknown): number | undefined => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return undefined;
+    if (/^\d+\s*\/\s*\d+$/.test(trimmed)) {
+      const [currentPart] = trimmed.split("/");
+      const currentNum = Number(currentPart.trim());
+      return Number.isFinite(currentNum) ? currentNum : undefined;
+    }
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
+
+const extractHealthValues = (source: Record<string, unknown>): { health?: number; maxHealth?: number } => {
+  let health: number | undefined;
+  let maxHealth: number | undefined;
+
+  const candidatePairs: Array<[string, string]> = [
+    ["health", "maxHealth"],
+    ["health", "max_health"],
+    ["currentHealth", "maxHealth"],
+    ["current_health", "max_health"],
+    ["hp", "maxHp"],
+    ["hp", "max_hp"],
+    ["hp_current", "hp_max"],
+    ["current", "max"],
+  ];
+
+  candidatePairs.forEach(([currentKey, maxKey]) => {
+    if (health === undefined && currentKey in source) {
+      health = coerceNumber(source[currentKey]);
+    }
+    if (maxHealth === undefined && maxKey in source) {
+      maxHealth = coerceNumber(source[maxKey]);
+    }
+  });
+
+  if (health === undefined) {
+    const nestedCandidate = source.health ?? source.hp ?? source.currentHealth;
+    if (isRecord(nestedCandidate)) {
+      health =
+        coerceNumber(
+          nestedCandidate.current ??
+          nestedCandidate.value ??
+          nestedCandidate.hp ??
+          nestedCandidate.health ??
+          nestedCandidate.amount,
+        ) ?? health;
+      maxHealth =
+        maxHealth ??
+        coerceNumber(
+          nestedCandidate.max ??
+          nestedCandidate.maximum ??
+          nestedCandidate.maxValue ??
+          nestedCandidate.total,
+        );
+    }
+  }
+
+  if (maxHealth === undefined) {
+    const nestedMax = source.maxHealth ?? source.max_health ?? source.maxHp ?? source.hp_max;
+    if (isRecord(nestedMax)) {
+      maxHealth =
+        coerceNumber(
+          nestedMax.value ?? nestedMax.max ?? nestedMax.total ?? nestedMax.maximum ?? nestedMax.amount,
+        ) ?? maxHealth;
+    }
+  }
+
+  return { health, maxHealth };
+};
+
+const hasHealthLikeData = (source: Record<string, unknown>): boolean => {
+  const primaryKeys = ["health", "currentHealth", "current_health", "hp", "hp_current"];
+  if (primaryKeys.some((key) => source[key] !== undefined)) {
+    return true;
+  }
+  const maxKeys = ["maxHealth", "max_health", "maxHp", "hp_max"];
+  if (maxKeys.some((key) => source[key] !== undefined)) {
+    return true;
+  }
+  const nested = source.health ?? source.hp ?? source.currentHealth;
+  if (isRecord(nested)) {
+    const nestedKeys = ["current", "value", "hp", "health", "amount", "now"];
+    if (nestedKeys.some((key) => nested[key] !== undefined)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const resolveCandidateId = (source: Record<string, unknown>): string | undefined => {
+  const idCandidate =
+    source.character_id ??
+    source.characterId ??
+    source.player_id ??
+    source.playerId ??
+    source.id;
+  return idCandidate != null ? String(idCandidate) : undefined;
+};
+
 // --- 인터페이스 정의 ---
 interface MessageImage {
   id: string;
@@ -71,6 +196,14 @@ interface MessageImage {
   mime: string;
   filename?: string;
   url?: string;
+}
+
+interface MessageMeta {
+  prompt?: string;
+  origin?: string;
+  hasImageLater?: boolean;
+  mergedPrompt?: boolean;
+  [key: string]: unknown;
 }
 
 interface Message {
@@ -81,9 +214,19 @@ interface Message {
   type?: "system" | "chat" | "dice" | "combat" | "status";
   images?: MessageImage[];
   status?: "image-generating";
-  prompt?: string;
   options?: string[];
+  meta?: MessageMeta;
 }
+
+interface HistoryChunk {
+  id: string;
+  label: string;
+  messages: Message[];
+  expanded: boolean;
+}
+
+const RECENT_HISTORY_VISIBLE_COUNT = 10;
+const HISTORY_CHUNK_SIZE = 80;
 
 interface Player {
   id: string;
@@ -209,10 +352,7 @@ const areInventoriesEqual = (a?: any[], b?: any[]): boolean => {
 
 const convertCharacterToPlayer = (character: any): Player | null => {
   if (!character) return null;
-  const parseNumeric = (value: unknown): number | undefined => {
-    const num = Number(value);
-    return Number.isFinite(num) ? num : undefined;
-  };
+  const parseNumeric = (value: unknown): number | undefined => coerceNumber(value);
   const rawStats =
     character?.stats ??
     character?.character_stats ??
@@ -230,22 +370,39 @@ const convertCharacterToPlayer = (character: any): Player | null => {
     character.characterIdStr ??
     character.characterIdString;
   const resolvedId = rawId ? String(rawId) : String(Date.now());
-  const computedHealth =
-    parseNumeric(character.health) ??
-    parseNumeric(character.currentHealth) ??
-    calculateHealthFromStats(stats);
-  const computedMaxHealth =
+  const healthInfo = typeof character === "object" && character !== null
+    ? extractHealthValues(character as Record<string, unknown>)
+    : { health: undefined, maxHealth: undefined };
+  const fallbackHealth = calculateHealthFromStats(stats);
+  const computedMaxHealthRaw =
+    healthInfo.maxHealth ??
     parseNumeric(character.maxHealth) ??
-    parseNumeric(character.max_health) ??
-    calculateHealthFromStats(stats);
+    parseNumeric(character.max_health);
+  const computedHealthRaw =
+    healthInfo.health ??
+    parseNumeric(character.health) ??
+    parseNumeric(character.currentHealth);
+
+  const provisionalMax =
+    computedMaxHealthRaw ??
+    (computedHealthRaw !== undefined ? computedHealthRaw : undefined) ??
+    fallbackHealth;
+
+  const safeMaxHealth = Number.isFinite(provisionalMax) && provisionalMax > 0 ? provisionalMax : fallbackHealth;
+  const safeHealthCandidate =
+    computedHealthRaw !== undefined ? computedHealthRaw : fallbackHealth;
+  const safeHealth =
+    Number.isFinite(safeHealthCandidate) && safeHealthCandidate >= 0
+      ? Math.min(safeHealthCandidate, safeMaxHealth)
+      : fallbackHealth;
 
   return {
     id: resolvedId,
     name: character.name ?? "이름 없음",
     role: character.class ?? character.role ?? "모험가",
-    avatar: character.avatar || "/placeholder-user.jpg",
-    health: computedHealth,
-    maxHealth: computedMaxHealth,
+    avatar: resolvePlayerAvatar(character.avatar),
+    health: safeHealth,
+    maxHealth: safeMaxHealth,
     mana:
       parseNumeric(character.mana) ??
       (character.class?.toLowerCase?.().includes("mage") ? 100 : undefined),
@@ -272,13 +429,135 @@ export default function GamePage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [gameId, setGameId] = useState<string | null>(null);
   const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
-  const [activeOptions, setActiveOptions] = useState<string[]>([]);
-  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [activeOptions, setActiveOptionsState] = useState<string[]>([]);
+  const [showImagePrompt, setShowImagePrompt] = useState(true);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [historyChunks, setHistoryChunks] = useState<HistoryChunk[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [aiServerOnline, setAiServerOnline] = useState(true);
   const socketRef = useRef<AiWebSocketClient | null>(null);
+  const lastAiMessageRef = useRef<number | null>(null);
+  const playerNameRef = useRef<string>("캐릭터");
   const activeCharacterId = players[0]?.id;
   const storageKeyId = gameId || (params?.id ? String(params.id) : null);
+
+  const activePlayer = useMemo(() => {
+    if (players.length === 0) return null;
+    if (selectedPlayerId) {
+      const found = players.find((player) => player.id === selectedPlayerId);
+      if (found) return found;
+    }
+    return players[0];
+  }, [players, selectedPlayerId]);
+  const activePlayerId = selectedPlayerId ?? activePlayer?.id;
+
+  useEffect(() => {
+    const fallbackName = players[0]?.name ?? "캐릭터";
+    if (selectedPlayerId) {
+      const selected = players.find((player) => player.id === selectedPlayerId);
+      if (selected?.name) {
+        playerNameRef.current = selected.name;
+        return;
+      }
+    }
+    playerNameRef.current = fallbackName;
+  }, [players, selectedPlayerId]);
+
+  const displayMessages = useMemo(() => {
+    if (messages.length <= RECENT_HISTORY_VISIBLE_COUNT) {
+      return [...messages].sort((a, b) => a.id - b.id);
+    }
+    const sorted = [...messages].sort((a, b) => a.id - b.id);
+    return sorted.slice(-RECENT_HISTORY_VISIBLE_COUNT);
+  }, [messages]);
+
+  const toggleHistoryChunk = useCallback((chunkId: string) => {
+    setHistoryChunks((prev) =>
+      prev.map((chunk) =>
+        chunk.id === chunkId ? { ...chunk, expanded: !chunk.expanded } : chunk
+      )
+    );
+  }, []);
+
+  const renderMessage = useCallback(
+    (msg: Message) => {
+      const matchingPlayer = players.find((player) => player.name === msg.sender);
+      const isPlayer = Boolean(matchingPlayer);
+      const bubbleClass = cn(
+        "rounded-lg p-3 w-full max-w-xl",
+        isPlayer ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+      );
+      const promptRaw = msg.meta ? (msg.meta as Record<string, unknown>)?.prompt : undefined;
+      const promptText =
+        typeof promptRaw === "string" && promptRaw.trim().length > 0 ? promptRaw : undefined;
+      const baseContent = msg.content ?? "";
+      const placeholderText = "이미지 생성 프롬프트를 수신했습니다.";
+      const displayContent = (() => {
+        if (promptText && showImagePrompt && baseContent === placeholderText) {
+          return "";
+        }
+        if (baseContent && baseContent.trim().length > 0) {
+          return baseContent;
+        }
+        if (!showImagePrompt && promptText) {
+          return placeholderText;
+        }
+        return baseContent;
+      })();
+      const avatarSrc = isPlayer ? matchingPlayer?.avatar ?? resolvePlayerAvatar() : undefined;
+      const avatarInitial =
+        typeof msg.sender === "string" && msg.sender.length > 0
+          ? msg.sender[0]
+          : matchingPlayer?.name?.[0] ?? "G";
+
+      return (
+        <div
+          key={`msg-${msg.id}`}
+          className={cn(
+            "flex items-start gap-3 max-w-[85%]",
+            isPlayer ? "ml-auto flex-row-reverse" : "mr-auto"
+          )}
+        >
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={avatarSrc} />
+            <AvatarFallback>{avatarInitial}</AvatarFallback>
+          </Avatar>
+          <div className={bubbleClass}>
+            <p className="text-sm font-medium mb-1">{msg.sender}</p>
+            {displayContent && displayContent.trim().length > 0 && (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayContent}</p>
+            )}
+            {showImagePrompt && !isPlayer && promptText && (
+              <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                [이미지 프롬프트]
+                <br />
+                {promptText}
+              </p>
+            )}
+            {msg.status === "image-generating" && (
+              <div className="mt-3 flex h-32 w-full max-w-xs items-center justify-center rounded-md border border-dashed border-muted-foreground/60 bg-muted text-sm text-muted-foreground">
+                이미지 생성 중입니다...
+              </div>
+            )}
+            {msg.images && msg.images.length > 0 && (
+              <div className="mt-3 grid gap-3">
+                {msg.images.map((image) => (
+                  <div key={image.id} className="overflow-hidden rounded-md border bg-background">
+                    <img
+                      src={image.dataUrl}
+                      alt={image.filename || "생성된 이미지"}
+                      className="block h-auto max-w-full"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    },
+    [players, showImagePrompt]
+  );
 
   const persistCharacterSnapshot = useCallback(
     (player: Player, gameKey?: string | null) => {
@@ -289,7 +568,7 @@ export default function GamePage() {
         name: player.name,
         class: player.role,
         level: player.level,
-        avatar: player.avatar,
+        avatar: resolvePlayerAvatar(player.avatar),
         stats: player.stats,
         inventory: player.inventory,
         health: player.health,
@@ -304,14 +583,85 @@ export default function GamePage() {
     [storageKeyId],
   );
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleAvatarUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<string | null | undefined>).detail ?? "";
+      const trimmed = typeof detail === "string" ? detail.trim() : "";
+      const nextAvatar = trimmed.length > 0 ? trimmed : resolvePlayerAvatar();
+      setPlayers((prev) => {
+        if (prev.length === 0) return prev;
+        const targetId = selectedPlayerId;
+        let updatedSnapshot: Player | null = null;
+        let changed = false;
+        const updated = prev.map((player, index) => {
+          const shouldUpdate = targetId ? player.id === targetId : index === 0;
+          if (!shouldUpdate) return player;
+          if (player.avatar === nextAvatar) return player;
+          const enriched = { ...player, avatar: nextAvatar };
+          updatedSnapshot = enriched;
+          changed = true;
+          return enriched;
+        });
+        if (changed && updatedSnapshot) {
+          persistCharacterSnapshot(updatedSnapshot, storageKeyId);
+        }
+        return changed ? updated : prev;
+      });
+    };
+    window.addEventListener(AVATAR_UPDATED_EVENT, handleAvatarUpdated as EventListener);
+    return () =>
+      window.removeEventListener(AVATAR_UPDATED_EVENT, handleAvatarUpdated as EventListener);
+  }, [persistCharacterSnapshot, selectedPlayerId, storageKeyId]);
+
   const applyPlayerState = useCallback(
     (player: Player, gameKey?: string | null) => {
-      setPlayers([player]);
-      setSelectedPlayer((prev) => (prev && prev.id === player.id ? player : prev));
-      persistCharacterSnapshot(player, gameKey);
+      const normalizedPlayer = { ...player, avatar: resolvePlayerAvatar(player.avatar) };
+      setPlayers([normalizedPlayer]);
+      setSelectedPlayerId((prev) => {
+        if (!prev) return normalizedPlayer.id;
+        return prev;
+      });
+      persistCharacterSnapshot(normalizedPlayer, gameKey);
     },
     [persistCharacterSnapshot],
   );
+
+  const persistActiveOptions = useCallback(
+    (options: string[], gameKey?: string | null) => {
+      const key = gameKey ?? storageKeyId;
+      if (!key || typeof window === "undefined") return;
+      const storageKey = `activeOptions:${key}`;
+      if (options.length > 0) {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(options));
+        } catch (error) {
+          console.warn("옵션 저장 실패:", error);
+        }
+      } else {
+        localStorage.removeItem(storageKey);
+      }
+    },
+    [storageKeyId],
+  );
+
+  const updateActiveOptions = useCallback(
+    (options: string[], gameKey?: string | null) => {
+      setActiveOptionsState(options);
+      persistActiveOptions(options, gameKey);
+    },
+    [persistActiveOptions],
+  );
+
+  useEffect(() => {
+    if (players.length === 0) return;
+    setSelectedPlayerId((prev) => {
+      if (prev && players.some((player) => player.id === prev)) {
+        return prev;
+      }
+      return players[0].id;
+    });
+  }, [players]);
 
   const fetchLatestCharacter = useCallback(
     async (targetGameId?: string | null, reason: string = "manual") => {
@@ -370,18 +720,31 @@ export default function GamePage() {
       setPlayers((prev) => {
         if (prev.length === 0) return prev;
         let changed = false;
-        const updatedPlayers = prev.map((player, index) => {
+        const updatedPlayers = prev.map((player) => {
           const matched = updates.find((candidate) => {
-            const rawId =
-              (candidate.character_id as unknown) ??
-              (candidate.characterId as unknown) ??
-              (candidate.player_id as unknown) ??
-              (candidate.playerId as unknown) ??
-              (candidate.id as unknown);
-            if (rawId == null) return false;
-            return String(rawId) === String(player.id);
+            if (!isRecord(candidate)) return false;
+            const candidateId = resolveCandidateId(candidate);
+            if (candidateId == null) return false;
+            return candidateId === String(player.id);
           });
-          const updateSource = matched || (index === 0 ? updates[0] : undefined);
+
+          let updateSource: Record<string, unknown> | undefined;
+          if (matched && isRecord(matched)) {
+            updateSource = matched;
+          } else if (prev.length === 1) {
+            const fallback = updates.find((candidate) => {
+              if (!isRecord(candidate)) return false;
+              const candidateId = resolveCandidateId(candidate);
+              if (candidateId != null && candidateId !== String(player.id)) {
+                return false;
+              }
+              return hasHealthLikeData(candidate);
+            });
+            if (fallback && isRecord(fallback)) {
+              updateSource = fallback;
+            }
+          }
+
           if (!updateSource) return player;
 
           const parsedStats = parseStatsPayload(
@@ -407,26 +770,23 @@ export default function GamePage() {
           const nextInventory =
             inventoryChanged && normalizedInventory ? normalizedInventory : player.inventory;
 
-          const levelValue =
-            typeof updateSource.level === "number"
-              ? updateSource.level
-              : typeof updateSource.level === "string" && !Number.isNaN(Number(updateSource.level))
-                ? Number(updateSource.level)
-                : player.level;
+          const updateRecord = isRecord(updateSource) ? updateSource : {};
+          const { health: extractedHealth, maxHealth: extractedMax } = extractHealthValues(updateRecord);
+
+          const levelValue = coerceNumber(updateRecord.level) ?? player.level;
 
           const healthValue =
-            typeof updateSource.health === "number"
-              ? updateSource.health
-              : typeof updateSource.currentHealth === "number"
-                ? updateSource.currentHealth
-                : undefined;
+            extractedHealth ??
+            coerceNumber(updateRecord.currentHealth ?? updateRecord.health ?? updateRecord.hp);
 
           const maxHealthValue =
-            typeof updateSource.maxHealth === "number"
-              ? updateSource.maxHealth
-              : typeof updateSource.max_health === "number"
-                ? updateSource.max_health
-                : undefined;
+            extractedMax ??
+            coerceNumber(
+              updateRecord.maxHealth ??
+              updateRecord.max_health ??
+              updateRecord.maxHp ??
+              updateRecord.hp_max,
+            );
 
           let nextMaxHealth = player.maxHealth;
           if (maxHealthValue !== undefined) {
@@ -438,16 +798,38 @@ export default function GamePage() {
             nextHealth = healthValue;
           }
 
+          if (!Number.isFinite(nextMaxHealth) || nextMaxHealth <= 0) {
+            nextMaxHealth = player.maxHealth > 0 ? player.maxHealth : 100;
+          }
+
+          if (!Number.isFinite(nextHealth)) {
+            nextHealth = player.health;
+          }
+
+          if (nextHealth > nextMaxHealth && nextMaxHealth > 0) {
+            nextHealth = nextMaxHealth;
+          }
+
+          if (nextHealth < 0) {
+            nextHealth = 0;
+          }
+
           const healthChanged = nextHealth !== player.health;
           const maxHealthChanged = nextMaxHealth !== player.maxHealth;
           const levelChanged = levelValue !== player.level;
+
+          const incomingAvatar =
+            updateSource.avatar !== undefined ? updateSource.avatar : player.avatar;
+          const resolvedAvatar = resolvePlayerAvatar(incomingAvatar);
+          const avatarChanged = resolvedAvatar !== player.avatar;
 
           if (
             !statsChanged &&
             !inventoryChanged &&
             !healthChanged &&
             !maxHealthChanged &&
-            !levelChanged
+            !levelChanged &&
+            !avatarChanged
           ) {
             return player;
           }
@@ -464,6 +846,7 @@ export default function GamePage() {
           }
           if (healthChanged || maxHealthChanged) {
             changes.health = nextHealth;
+            changes.maxHealth = nextMaxHealth;
           }
           if (updateSource.name !== undefined && updateSource.name !== player.name) {
             changes.name = updateSource.name;
@@ -471,8 +854,8 @@ export default function GamePage() {
           if (updateSource.class !== undefined && updateSource.class !== player.role) {
             changes.class = updateSource.class;
           }
-          if (updateSource.avatar !== undefined && updateSource.avatar !== player.avatar) {
-            changes.avatar = updateSource.avatar;
+          if (avatarChanged) {
+            changes.avatar = resolvedAvatar;
           }
 
           const nextPlayer: Player = {
@@ -482,6 +865,7 @@ export default function GamePage() {
             health: nextHealth,
             maxHealth: nextMaxHealth,
             level: levelValue,
+            avatar: resolvedAvatar,
           };
 
           changed = true;
@@ -497,7 +881,7 @@ export default function GamePage() {
 
       if (latestSnapshot) {
         const snapshot = latestSnapshot;
-        setSelectedPlayer((prev) => (prev && prev.id === snapshot.id ? snapshot : prev));
+        setSelectedPlayerId((prev) => prev ?? snapshot.id);
         persistCharacterSnapshot(snapshot);
       }
 
@@ -519,23 +903,21 @@ export default function GamePage() {
           );
           const updatedData = response?.data?.data || response?.data;
           const updatedPlayer = convertCharacterToPlayer(updatedData);
-          if (updatedPlayer) {
-            console.log("[GamePage] AI 캐릭터 업데이트 서버 반영 성공:", updatedPlayer);
-            setPlayers((prev) =>
-              prev.map((player) => (player.id === updatedPlayer.id ? updatedPlayer : player)),
-            );
-            setSelectedPlayer((prev) =>
-              prev && prev.id === updatedPlayer.id ? updatedPlayer : prev,
-            );
-            persistCharacterSnapshot(updatedPlayer);
-          }
+        if (updatedPlayer) {
+          console.log("[GamePage] AI 캐릭터 업데이트 서버 반영 성공:", updatedPlayer);
+          setPlayers((prev) =>
+            prev.map((player) => (player.id === updatedPlayer.id ? updatedPlayer : player)),
+          );
+          setSelectedPlayerId((prev) => prev ?? updatedPlayer.id);
+          persistCharacterSnapshot(updatedPlayer);
+        }
           await fetchLatestCharacter(gameId);
         } catch (err) {
           console.error("[GamePage] 캐릭터 상태 동기화 실패:", err);
         }
       }
     },
-    [persistCharacterSnapshot, gameId, fetchLatestCharacter],
+    [persistCharacterSnapshot, gameId, fetchLatestCharacter, updateActiveOptions],
   );
 
   const extractTextFromPayload = (payload: AiServerResponse): string => {
@@ -712,11 +1094,28 @@ export default function GamePage() {
           .map((entry: any, index: number) => {
             const seq = typeof entry?.sequence_number === "number" ? entry.sequence_number : index;
             const role = typeof entry?.role === "string" ? entry.role : "assistant";
-            const sender = role === "assistant" ? "AI" : role === "user" ? "플레이어" : role;
+            const characterName =
+              (typeof entry?.character_name === "string" && entry.character_name.trim().length > 0
+                ? entry.character_name
+                : typeof entry?.characterName === "string" && entry.characterName.trim().length > 0
+                  ? entry.characterName
+                  : typeof entry?.player_name === "string" && entry.player_name.trim().length > 0
+                    ? entry.player_name
+                    : typeof entry?.playerName === "string" && entry.playerName.trim().length > 0
+                      ? entry.playerName
+                      : undefined) ?? playerNameRef.current;
+            const resolvedSender =
+              role === "assistant"
+                ? "GM"
+                : role === "user"
+                  ? characterName ?? playerNameRef.current
+                  : typeof entry?.sender === "string" && entry.sender.trim().length > 0
+                    ? entry.sender
+                    : role;
             const imageUrl = resolveStaticUrl(entry?.image_url);
             return {
               id: seq,
-              sender,
+              sender: resolvedSender,
               content: typeof entry?.content === "string" ? entry.content : "",
               timestamp: typeof entry?.timestamp === "string" ? entry.timestamp : buildTimestamp(),
               type: "chat",
@@ -732,9 +1131,43 @@ export default function GamePage() {
                 : undefined,
             } as Message;
           });
+
+        const totalMessages = mapped.length;
+        const visibleCount = Math.min(totalMessages, RECENT_HISTORY_VISIBLE_COUNT);
+        const cutoffIndex = Math.max(totalMessages - visibleCount, 0);
+        const olderMessages = mapped.slice(0, cutoffIndex);
+        const chunkList: HistoryChunk[] = [];
+        for (let idx = 0; idx < olderMessages.length; idx += HISTORY_CHUNK_SIZE) {
+          const chunkMessages = olderMessages.slice(idx, idx + HISTORY_CHUNK_SIZE);
+          if (chunkMessages.length === 0) continue;
+          const first = chunkMessages[0];
+          const last = chunkMessages[chunkMessages.length - 1];
+          const label = `${first.timestamp} ~ ${last.timestamp}`;
+          chunkList.push({
+            id: `chunk-${first.id}-${idx}`,
+            label,
+            messages: chunkMessages,
+            expanded: false,
+          });
+        }
+        setHistoryChunks(chunkList.reverse());
         setMessages(mapped);
         console.log("[History] 대화 기록 불러오기 완료", { count: mapped.length });
-        setActiveOptions([]);
+        if (typeof window !== "undefined" && gameId) {
+          const stored = localStorage.getItem(`activeOptions:${gameId}`);
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              updateActiveOptions(Array.isArray(parsed) ? parsed : [], gameId);
+            } catch {
+              updateActiveOptions([], gameId);
+            }
+          } else {
+            updateActiveOptions([], gameId);
+          }
+        } else {
+          updateActiveOptions([], gameId);
+        }
       } catch (error) {
         if (!cancelled) {
           console.error("대화 기록 불러오기 실패:", error);
@@ -743,7 +1176,7 @@ export default function GamePage() {
             {
               id: Date.now(),
               sender: "시스템",
-              content: "대화 기록을 불러올 수 없습니다. AI 서버 상태를 확인해주세요.",
+              content: "대화 기록을 불러올 수 없습니다. GM 서버 상태를 확인해주세요.",
               timestamp: buildTimestamp(),
               type: "system",
             },
@@ -762,9 +1195,39 @@ export default function GamePage() {
     return () => {
       cancelled = true;
     };
-  }, [gameId, aiServerOnline]);
+  }, [gameId, aiServerOnline, updateActiveOptions]);
 
   // AI 세션 시작 + 시나리오 로딩
+  useEffect(() => {
+    setHistoryChunks((prevChunks) => {
+      const sortedMessages = [...messages].sort((a, b) => a.id - b.id);
+      const total = sortedMessages.length;
+      const visibleCount = Math.min(total, RECENT_HISTORY_VISIBLE_COUNT);
+      const cutoff = Math.max(total - visibleCount, 0);
+      const olderMessages = sortedMessages.slice(0, cutoff);
+      if (olderMessages.length === 0) {
+        return [];
+      }
+      const previousState = new Map(prevChunks.map((chunk) => [chunk.id, chunk.expanded]));
+      const chunkList: HistoryChunk[] = [];
+      for (let idx = 0; idx < olderMessages.length; idx += HISTORY_CHUNK_SIZE) {
+        const chunkMessages = olderMessages.slice(idx, idx + HISTORY_CHUNK_SIZE);
+        if (chunkMessages.length === 0) continue;
+        const first = chunkMessages[0];
+        const last = chunkMessages[chunkMessages.length - 1];
+        const id = `chunk-${first.id}-${idx}`;
+        const label = `${first.timestamp} ~ ${last.timestamp}`;
+        chunkList.push({
+          id,
+          label,
+          messages: chunkMessages,
+          expanded: previousState.get(id) ?? false,
+        });
+      }
+      return chunkList.reverse();
+    });
+  }, [messages]);
+
   useEffect(() => {
     const startSessionAndFetchScenario = async () => {
       if (!aiServerOnline) {
@@ -867,7 +1330,7 @@ export default function GamePage() {
         if (m.kind === "ai_response") {
           const origin = (m as typeof m & { source?: string }).source ?? "ws:ai_response";
           const payload: AiServerResponse = m.payload || {};
-          console.log("[GamePage] AI 응답 수신:", { origin, payload });
+          console.log("[GamePage] GM 응답 수신:", { origin, payload });
 
           if (payload && typeof payload === "object") {
             void updateCharacterFromAiPayload(payload, origin);
@@ -882,72 +1345,148 @@ export default function GamePage() {
           const images = normalizeImagesFromPayload(payload);
           const options = normalizeOptionsFromPayload(payload);
 
-          const promptSummary =
-            typeof (payload as any).prompt === "string" && (payload as any).prompt.trim().length > 0
-              ? `[생성된 이미지]\n프롬프트: ${(payload as any).prompt.trim()}`
-              : "";
+          const rawPrompt =
+            typeof (payload as any).prompt === "string" ? (payload as any).prompt.trim() : "";
+          const promptValue = rawPrompt.length > 0 ? rawPrompt : undefined;
 
-          const messageContent =
-            text.length > 0
-              ? text
-              : promptSummary.length > 0
-                ? promptSummary
-                : images.length > 0
-                  ? "이미지가 도착했습니다."
-                  : "";
-
-          const newMessage: Message = {
-            id: Date.now(),
-            sender: "AI",
-            content: messageContent,
-            timestamp,
-            type: "chat",
-          };
-
-          if (images.length > 0) {
-            newMessage.images = images;
+          let messageContent = text;
+          if (!messageContent || messageContent.trim().length === 0) {
+            if (images.length > 0) {
+              messageContent = "이미지가 도착했습니다.";
+            } else if (promptValue) {
+              messageContent = "이미지 생성 프롬프트를 수신했습니다.";
+            } else {
+              messageContent = "";
+            }
           }
 
-          if (options.length > 0) {
-            newMessage.options = options;
-            setActiveOptions(options);
+          const shouldMergeWithRecent =
+            lastAiMessageRef.current !== null &&
+            text.length === 0 &&
+            promptValue !== undefined;
+
+          if (shouldMergeWithRecent) {
+            setMessages((prev) => {
+              const idx = prev.findIndex((msg) => msg.id === lastAiMessageRef.current);
+              if (idx === -1) return prev;
+              const updated = [...prev];
+              const target = updated[idx];
+              const mergedImages = images.length > 0
+                ? (target.images ? [...target.images, ...images] : [...images])
+                : target.images;
+              updated[idx] = {
+                ...target,
+                images: mergedImages,
+                meta: { ...target.meta, prompt: promptValue, origin },
+              };
+              return updated;
+            });
+            if (options.length > 0) {
+              updateActiveOptions(options, gameId);
+            } else {
+              updateActiveOptions([], gameId);
+            }
           } else {
-            setActiveOptions([]);
+            const messageMeta: Record<string, unknown> = {
+              origin,
+              prompt: promptValue,
+              hasImageLater: images.length === 0,
+            };
+
+            const newMessage: Message = {
+              id: Date.now(),
+              sender: "GM",
+              content: messageContent,
+              timestamp,
+              type: "chat",
+              meta: messageMeta,
+            };
+
+            if (images.length > 0) {
+              newMessage.images = images;
+            }
+
+            if (options.length > 0) {
+              newMessage.options = options;
+              updateActiveOptions(options, gameId);
+            }
+
+            setMessages((prev) => [...prev, newMessage]);
+            lastAiMessageRef.current = newMessage.id;
           }
 
-          setMessages((prev) => [...prev, newMessage]);
+          if (!shouldMergeWithRecent && options.length === 0) {
+            updateActiveOptions([], gameId);
+          }
+
           setIsAwaitingResponse(false);
           return;
+
         }
+
 
         if (m.kind === "chat") {
           console.log("[GamePage] chat 이벤트 수신:", m);
           if (m.role === "assistant") {
             setIsAwaitingResponse(false);
           }
+          const msgId = Date.now();
+          const incomingPlayerName =
+            (typeof (m as any).characterName === "string" && (m as any).characterName.trim().length > 0
+              ? (m as any).characterName
+              : typeof (m as any).playerName === "string" && (m as any).playerName.trim().length > 0
+                ? (m as any).playerName
+                : typeof (m as any).sender === "string" && (m as any).sender.trim().length > 0
+                  ? (m as any).sender
+                  : undefined) ?? playerNameRef.current;
           setMessages((prev) => [
             ...prev,
             {
-              id: Date.now(),
-              sender: m.role === "assistant" ? "AI" : "플레이어",
+              id: msgId,
+              sender: m.role === "assistant" ? "GM" : incomingPlayerName,
               content: m.content,
               timestamp: buildTimestamp(),
-              type: m.role === "assistant" ? "chat" : "system",
+              type: "chat",
             },
           ]);
+          if (m.role === "assistant") {
+            lastAiMessageRef.current = msgId;
+          }
         } else if (m.kind === "image") {
           console.log("[GamePage] image 이벤트 수신:", m);
           setIsAwaitingResponse(false);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now(),
-              sender: "AI",
-              content: `이미지 생성됨 (${m.mime})`,
-              timestamp: buildTimestamp(),
-              type: "system",
-            },
-          ]);
+          const newImage: MessageImage = {
+            id: m.id || `inline-image-${Date.now()}`,
+            dataUrl: `data:${m.mime};base64,${m.data}`,
+            mime: m.mime,
+          };
+          setMessages((prev) => {
+            if (lastAiMessageRef.current) {
+              const idx = prev.findIndex((msg) => msg.id === lastAiMessageRef.current);
+              if (idx !== -1) {
+                const updated = [...prev];
+                const target = updated[idx];
+                const mergedImages = target.images ? [...target.images, newImage] : [newImage];
+                updated[idx] = {
+                  ...target,
+                  images: mergedImages,
+                  meta: { ...target.meta, hasImageLater: false },
+                };
+                return updated;
+              }
+            }
+            return [
+              ...prev,
+              {
+                id: Date.now(),
+                sender: "GM",
+                content: `이미지 생성됨 (${m.mime})`,
+                timestamp: buildTimestamp(),
+                type: "system",
+                images: [newImage],
+              },
+            ];
+          });
         } else if (m.kind === "info") {
           console.log("[GamePage] WebSocket info:", m.message);
         }
@@ -961,7 +1500,7 @@ export default function GamePage() {
         socketRef.current = null;
       }
     };
-  }, [sessionId, gameId, updateCharacterFromAiPayload, fetchLatestCharacter]);
+  }, [sessionId, gameId, updateCharacterFromAiPayload, fetchLatestCharacter, updateActiveOptions]);
 
 
   // 채팅 메시지 스크롤
@@ -973,7 +1512,7 @@ export default function GamePage() {
 
   const sendChatMessage = (content: string) => {
     if (isAwaitingResponse) {
-      console.warn("[GamePage] AI 응답 대기 중이라 메시지를 전송할 수 없습니다.");
+      console.warn("[GamePage] GM 응답 대기 중이라 메시지를 전송할 수 없습니다.");
       return;
     }
 
@@ -981,22 +1520,23 @@ export default function GamePage() {
     if (!trimmed) return;
 
     const userTimestamp = buildTimestamp();
+    const currentPlayerName = playerNameRef.current || activePlayer?.name || "캐릭터";
     const userMessage: Message = {
       id: Date.now(),
-      sender: "플레이어",
+      sender: currentPlayerName,
       content: trimmed,
       timestamp: userTimestamp,
       type: "chat",
     };
 
-    console.log("[GamePage] 플레이어 메시지 전송:", trimmed);
+    console.log("[GamePage] 캐릭터 메시지 전송:", trimmed);
     setMessages((prev) => {
       const cleaned = prev.map((msg) =>
         msg.options && msg.options.length > 0 ? { ...msg, options: undefined } : msg,
       );
       return [...cleaned, userMessage];
     });
-    setActiveOptions([]);
+    updateActiveOptions([], gameId);
     setMessage("");
     setIsAwaitingResponse(true);
 
@@ -1009,7 +1549,7 @@ export default function GamePage() {
         {
           id: Date.now() + 1,
           sender: "시스템",
-          content: "AI 서버에 연결되어 있지 않습니다.",
+          content: "GM 서버에 연결되어 있지 않습니다.",
           timestamp: buildTimestamp(),
           type: "system",
         },
@@ -1053,7 +1593,7 @@ export default function GamePage() {
     return (
       <div className="flex h-screen bg-background text-foreground">
         <aside className="w-60 border-r bg-card p-4">
-          <h2 className="text-lg font-semibold mb-4">플레이어</h2>
+          <h2 className="text-lg font-semibold mb-4">캐릭터 이름</h2>
           <div className="space-y-4">{players.map((player) => (<Card key={player.id}><CardContent className="p-4"><div className="flex items-center space-x-3 mb-3"><Avatar><AvatarImage src={player.avatar} alt={player.name} /><AvatarFallback>{player.name[0]}</AvatarFallback></Avatar><div><h3 className="font-semibold">{player.name}</h3><p className="text-sm text-muted-foreground">{player.role}</p></div></div></CardContent></Card>))}</div>
         </aside>
         <main className="flex-1 flex flex-col justify-center items-center">
@@ -1065,20 +1605,23 @@ export default function GamePage() {
 
   return (
     <div className="flex h-screen bg-background text-foreground">
-      <aside className="w-60 border-r bg-card p-4 overflow-y-auto">
-        <h2 className="text-lg font-semibold mb-4">플레이어</h2>
+      <aside className="w-72 border-r bg-card p-4 overflow-y-auto">
+        <h2 className="text-lg font-semibold mb-4">캐릭터 이름</h2>
         <div className="space-y-4">
           {players.map((player) => (
             <Card
               key={player.id}
-              className="cursor-pointer transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className={cn(
+                "cursor-pointer transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                player.id === activePlayerId ? "ring-2 ring-primary" : ""
+              )}
               role="button"
               tabIndex={0}
-              onClick={() => setSelectedPlayer(player)}
+              onClick={() => setSelectedPlayerId(player.id)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  setSelectedPlayer(player);
+                  setSelectedPlayerId(player.id);
                 }
               }}
             >
@@ -1093,35 +1636,125 @@ export default function GamePage() {
                     <p className="text-sm text-muted-foreground">{player.role}</p>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <div>
-                    <div className="flex justify-between text-sm">
-                      <span>체력</span>
-                      <span>
-                        {player.health}/{player.maxHealth}
-                      </span>
-                    </div>
-                    <Progress value={(player.health / player.maxHealth) * 100} className="h-2" />
-                  </div>
-                  {player.mana != null && (
-                    <div>
-                      <div className="flex justify-between text-sm">
-                        <span>마나</span>
-                        <span>
-                          {player.mana}/{player.maxMana}
-                        </span>
+                {player.id === activePlayerId && (
+                  <div className="mt-4 space-y-4">
+                    <div className="space-y-2">
+                      <div>
+                        {(() => {
+                          const current = Number.isFinite(player.health) ? player.health : 0;
+                          const max =
+                            Number.isFinite(player.maxHealth) && player.maxHealth > 0 ? player.maxHealth : 100;
+                          const percent = computePercent(current, max);
+                          return (
+                            <>
+                              <div className="flex justify-between text-sm">
+                                <span>체력</span>
+                                <span>
+                                  {Math.round(current)}/{Math.round(max)}
+                                </span>
+                              </div>
+                              <Progress value={percent} className="h-2" />
+                            </>
+                          );
+                        })()}
                       </div>
-                      <Progress
-                        value={(player.mana / (player.maxMana || 100)) * 100}
-                        className="h-2"
-                      />
+                      {player.mana != null && (
+                        <div>
+                          {(() => {
+                            const current =
+                              typeof player.mana === "number" && Number.isFinite(player.mana) ? player.mana : 0;
+                            const max =
+                              typeof player.maxMana === "number" &&
+                              Number.isFinite(player.maxMana) &&
+                              player.maxMana > 0
+                                ? player.maxMana
+                                : 100;
+                            const percent = computePercent(current, max);
+                            return (
+                              <>
+                                <div className="flex justify-between text-sm">
+                                  <span>마나</span>
+                                  <span>
+                                    {Math.round(current)}/{Math.round(max)}
+                                  </span>
+                                </div>
+                                <Progress value={percent} className="h-2" />
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+
+                    <div className="space-y-1 text-sm">
+                      <p>
+                        레벨: <span className="font-semibold">{player.level}</span>
+                      </p>
+                    </div>
+
+                    {player.stats && Object.keys(player.stats).length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold text-muted-foreground">능력치</h4>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          {Object.entries(player.stats).map(([key, value]) => (
+                            <div
+                              key={key}
+                              className="flex items-center justify-between rounded-md border px-3 py-2 text-xs"
+                            >
+                              <span className="text-muted-foreground">{formatStatLabel(key)}</span>
+                              <span className="font-semibold">{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <h4 className="text-xs font-semibold text-muted-foreground">인벤토리</h4>
+                      {player.inventory && player.inventory.length > 0 ? (
+                        <ul className="mt-2 space-y-2 text-xs">
+                          {player.inventory.map((item, index) => {
+                            if (item && typeof item === "object") {
+                              const { name, ...rest } = item as Record<string, any>;
+                              const displayName =
+                                typeof name === "string" && name.trim().length > 0 ? name : `아이템 ${index + 1}`;
+                              const detailEntries = Object.entries(rest).filter(
+                                ([, value]) => value !== undefined && value !== null && value !== "",
+                              );
+                              return (
+                                <li key={`${displayName}-${index}`} className="rounded-md border px-3 py-2">
+                                  <p className="font-semibold">{displayName}</p>
+                                  {detailEntries.length > 0 && (
+                                    <ul className="mt-1 space-y-1 text-muted-foreground">
+                                      {detailEntries.map(([label, value]) => (
+                                        <li key={label} className="flex justify-between gap-2">
+                                          <span>{formatStatLabel(label)}</span>
+                                          <span className="font-medium">{String(value)}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </li>
+                              );
+                            }
+                            return (
+                              <li key={`item-${index}`} className="rounded-md border px-3 py-2 font-semibold">
+                                {String(item)}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-xs text-muted-foreground">등록된 아이템이 없습니다.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
         </div>
+        
       </aside>
       
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -1136,70 +1769,25 @@ export default function GamePage() {
         {/* 하단 채팅 영역 */}
         <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
           <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-            {messages.map((msg) => {
-              const isPlayer = msg.sender === "플레이어";
-              const bubbleClass = cn(
-                "rounded-lg p-3 w-full max-w-xl",
-                isPlayer ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-              );
-              return (
-                <div
-                  key={msg.id}
-                  className={cn(
-                    "flex items-start gap-3 max-w-[85%]",
-                    isPlayer ? "ml-auto flex-row-reverse" : "mr-auto"
-                  )}
+            {historyChunks.map((chunk) => (
+              <div key={chunk.id} className="space-y-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex items-center gap-2 text-xs text-muted-foreground"
+                  onClick={() => toggleHistoryChunk(chunk.id)}
                 >
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage
-                      src={
-                        isPlayer
-                          ? players.find((p) => p.name === msg.sender)?.avatar
-                          : undefined
-                      }
-                    />
-                    <AvatarFallback>{msg.sender[0]}</AvatarFallback>
-                  </Avatar>
-                  <div className={bubbleClass}>
-                    <p className="text-sm font-medium mb-1">{msg.sender}</p>
-                    {msg.content && (
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                        {msg.content}
-                      </p>
-                    )}
-                    {msg.prompt && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        프롬프트: {msg.prompt}
-                      </p>
-                    )}
-                    {msg.status === "image-generating" && (
-                      <div className="mt-3 flex h-32 w-full max-w-xs items-center justify-center rounded-md border border-dashed border-muted-foreground/60 bg-muted text-sm text-muted-foreground">
-                        이미지 생성 중입니다...
-                      </div>
-                    )}
-                    {msg.images && msg.images.length > 0 && (
-                      <div className="mt-3 grid gap-3">
-                        {msg.images.map((image) => (
-                          <div
-                            key={image.id}
-                            className="overflow-hidden rounded-md border bg-background"
-                          >
-                            <img
-                              src={image.dataUrl}
-                              alt={image.filename || "생성된 이미지"}
-                              className="block h-auto max-w-full"
-                            />
-                            <div className="px-3 py-2 text-xs text-muted-foreground">
-                              {image.filename || image.mime}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  {chunk.expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {chunk.label} ({chunk.messages.length}개 대화)
+                </Button>
+                {chunk.expanded && (
+                  <div className="space-y-4">
+                    {chunk.messages.map((msg) => renderMessage(msg))}
                   </div>
-                </div>
-              );
-            })}
+                )}
+              </div>
+            ))}
+            {displayMessages.map((msg) => renderMessage(msg))}
             <div ref={messagesEndRef} />
           </div>
           {activeOptions.length > 0 && (
@@ -1223,7 +1811,7 @@ export default function GamePage() {
             <Textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder={isAwaitingResponse ? "AI 응답을 기다리는 중입니다..." : "메시지를 입력하세요..."}
+                placeholder={isAwaitingResponse ? "GM 응답을 기다리는 중입니다..." : "메시지를 입력하세요..."}
               className="flex-1 resize-none"
               disabled={isAwaitingResponse}
               onKeyDown={(e) => {
@@ -1238,104 +1826,18 @@ export default function GamePage() {
               <Send className="h-5 w-5" />
             </Button>
           </div>
+          <div className="mt-2 flex items-center justify-end gap-2 text-xs text-muted-foreground">
+            <span>이미지 프롬프트</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowImagePrompt((prev) => !prev)}
+            >
+              {showImagePrompt ? "숨기기" : "보기"}
+            </Button>
+          </div>
         </div>
       </main>
-      <Dialog
-        open={selectedPlayer !== null}
-        onOpenChange={(open) => {
-          if (!open) setSelectedPlayer(null);
-        }}
-      >
-        {selectedPlayer && (
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{selectedPlayer.name}</DialogTitle>
-              <DialogDescription>
-                {selectedPlayer.role} · 레벨 {selectedPlayer.level}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex items-center gap-4">
-              <Avatar className="h-16 w-16">
-                <AvatarImage src={selectedPlayer.avatar} alt={selectedPlayer.name} />
-                <AvatarFallback>{selectedPlayer.name[0]}</AvatarFallback>
-              </Avatar>
-              <div className="space-y-1 text-sm">
-                <p>
-                  체력:{" "}
-                  <span className="font-semibold">
-                    {selectedPlayer.health}/{selectedPlayer.maxHealth}
-                  </span>
-                </p>
-                {selectedPlayer.mana != null && (
-                  <p>
-                    마나:{" "}
-                    <span className="font-semibold">
-                      {selectedPlayer.mana}/{selectedPlayer.maxMana}
-                    </span>
-                  </p>
-                )}
-              </div>
-            </div>
-            {selectedPlayer.stats && Object.keys(selectedPlayer.stats).length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold">능력치</h4>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {Object.entries(selectedPlayer.stats).map(([key, value]) => (
-                    <div
-                      key={key}
-                      className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                    >
-                      <span className="text-muted-foreground">{formatStatLabel(key)}</span>
-                      <span className="font-semibold">{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div>
-              <h4 className="text-sm font-semibold">인벤토리</h4>
-              {selectedPlayer.inventory && selectedPlayer.inventory.length > 0 ? (
-                <ul className="mt-2 space-y-2">
-                  {selectedPlayer.inventory.map((item, index) => {
-                    if (item && typeof item === "object") {
-                      const { name, ...rest } = item as Record<string, any>;
-                      const displayName =
-                        typeof name === "string" && name.trim().length > 0
-                          ? name
-                          : `아이템 ${index + 1}`;
-                      const detailEntries = Object.entries(rest).filter(
-                        ([, value]) => value !== undefined && value !== null && value !== ""
-                      );
-                      return (
-                        <li key={index} className="rounded-md border p-3 text-sm">
-                          <div className="font-medium">{displayName}</div>
-                          {detailEntries.length > 0 && (
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {detailEntries.map(([k, v]) => `${k}: ${v}`).join(" / ")}
-                            </div>
-                          )}
-                        </li>
-                      );
-                    }
-                    return (
-                      <li key={index} className="rounded-md border p-3 text-sm">
-                        {typeof item === "string" ? item : JSON.stringify(item)}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="mt-2 text-sm text-muted-foreground">보유 아이템이 없습니다.</p>
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setSelectedPlayer(null)}>
-                닫기
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
     </div>
   );
 }

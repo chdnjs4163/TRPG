@@ -58,20 +58,23 @@ GET /api/characters/:characterId
 - notes: stats keys = ["strength", "dexterity", "wisdom", "charisma"]; use health/maxHealth for HP values.
 
 PATCH /api/characters/:characterId
-- body: { name?, class?, level?, stats?, inventory?, avatar? }
+- body: { name?, class?, level?, stats?, inventory?, avatar?, health?, maxHealth? }
 - resp: { id, userId, gameId, name, class, level, stats, inventory, avatar, health, maxHealth }
+- notes: `health` accepts either a 단일 숫자 (현재 체력) or JSON { current, max }; `maxHealth`는 숫자로도 전달 가능. 서버 저장 시 health JSON 으로 변환.
 
 PATCH /api/characters/game/:gameId
-- body: { name?, class?, level?, stats?, inventory?, avatar?, health? }
+- body: { name?, class?, level?, stats?, inventory?, avatar?, health?, maxHealth? }
 - resp: { id, userId, gameId, name, class, level, stats, inventory, avatar, health, maxHealth }
+- notes: gameId 기준 대표 캐릭터를 찾아 업데이트. health 필드 규칙은 위와 동일.
 
 GET /api/games/:gameId/characters
 - resp: [{ id, userId, gameId, name, class, level, stats, inventory, avatar, health, maxHealth, createdAt, updatedAt }]
 - notes: same stats key set, health values provided separately.
 
 POST /api/games/:gameId/characters
-- body: { userId, name, class, level?, stats?, inventory?, avatar?, health? }
-- resp: { id, health }
+- body: { userId, name, class, level?, stats?, inventory?, avatar?, health?, maxHealth? }
+- resp: { id, health, maxHealth }
+- notes: 미입력 시 능력치 기반으로 health/current와 max를 자동 계산해 JSON으로 저장.
 
 DELETE /api/characters/:characterId
 - resp: { ok: true }

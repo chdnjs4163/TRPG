@@ -2,7 +2,114 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const { success, error } = require("../utils/response");
-const { normalizeId, parseJson, serializeJson, ensureGameExists, ensureCharacterExists } = require("../utils/ai");
+const {
+  normalizeId,
+  parseJson,
+  serializeJson,
+  ensureGameExists,
+  ensureCharacterExists,
+} = require("../utils/ai");
+
+const toNumber = (value) => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
+
+const parseHealthColumn = (rawHealth) => {
+  const parsed = parseJson(rawHealth, null);
+  if (parsed && typeof parsed === "object") {
+    const current =
+      toNumber(parsed.current) ??
+      toNumber(parsed.value) ??
+      toNumber(parsed.health) ??
+      toNumber(parsed.hp) ??
+      toNumber(parsed.amount);
+    const max =
+      toNumber(parsed.max) ??
+      toNumber(parsed.maximum) ??
+      toNumber(parsed.maxHealth) ??
+      toNumber(parsed.total) ??
+      toNumber(parsed.max_hp);
+    return { current, max };
+  }
+  const numeric = toNumber(rawHealth);
+  return { current: numeric, max: undefined };
+};
+
+const buildHealthPayload = (current, max) => {
+  const resolvedCurrent = toNumber(current);
+  const resolvedMax = toNumber(max);
+  const payload = {};
+  if (resolvedCurrent !== undefined) payload.current = Math.round(resolvedCurrent);
+  if (resolvedMax !== undefined) payload.max = Math.round(resolvedMax);
+  return payload;
+};
+
+const HEALTH_COLUMN_CANDIDATES = ["health", "health_json"];
+
+let cachedHealthColumnInfo = null;
+
+async function resolveHealthColumnInfo() {
+  if (cachedHealthColumnInfo) return cachedHealthColumnInfo;
+  try {
+    const placeholders = HEALTH_COLUMN_CANDIDATES.map(() => "?").join(",");
+    const [rows] = await pool.query(
+      `SELECT COLUMN_NAME, DATA_TYPE
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'ai_characters'
+         AND COLUMN_NAME IN (${placeholders})
+       ORDER BY FIELD(COLUMN_NAME, ${HEALTH_COLUMN_CANDIDATES.map(() => "?").join(",")})
+       LIMIT 1`,
+      [...HEALTH_COLUMN_CANDIDATES, ...HEALTH_COLUMN_CANDIDATES]
+    );
+    if (rows.length > 0) {
+      const row = rows[0];
+      const dataType = (row.DATA_TYPE || row.data_type || "").toString().toLowerCase();
+      cachedHealthColumnInfo = {
+        name: row.COLUMN_NAME || row.column_name,
+        isJson: dataType === "json",
+      };
+      return cachedHealthColumnInfo;
+    }
+  } catch (err) {
+    if (err?.code !== "ER_NO_SUCH_TABLE") {
+      throw err;
+    }
+  }
+
+  // Fallback probing when INFORMATION_SCHEMA unavailable
+  for (const column of HEALTH_COLUMN_CANDIDATES) {
+    try {
+      await pool.query(`SELECT ${column} FROM ai_characters LIMIT 1`);
+      cachedHealthColumnInfo = { name: column, isJson: column !== "health" }; // assume legacy health is numeric
+      return cachedHealthColumnInfo;
+    } catch (err) {
+      if (err?.code !== "ER_BAD_FIELD_ERROR") {
+        throw err;
+      }
+    }
+  }
+  return null;
+}
+
+async function selectCharacterRows(queryBuilder, params) {
+  const info = await resolveHealthColumnInfo();
+  if (info?.name) {
+    const sql = queryBuilder(info.name);
+    const [rows] = await pool.query(sql, params);
+    return rows;
+  }
+  // Final fallback: attempt with primary candidate
+  const sql = queryBuilder("health");
+  const [rows] = await pool.query(sql, params);
+  return rows;
+}
 function calculateHealth(stats) {
   const baseHealth = 100;
   if (!stats || typeof stats !== "object") return baseHealth;
@@ -19,8 +126,24 @@ function calculateHealth(stats) {
 function mapCharacter(row) {
   const stats = parseJson(row.stats, {});
   const inventory = parseJson(row.inventory, []);
-  const storedHealth = Number(row.health);
-  const health = !Number.isNaN(storedHealth) && storedHealth > 0 ? storedHealth : calculateHealth(stats);
+  const stored = parseHealthColumn(row.health);
+  const computedFallback = calculateHealth(stats);
+
+  const health =
+    toNumber(stored.current) ??
+    toNumber(row.health_current) ??
+    toNumber(row.health) ??
+    computedFallback;
+
+  const maxHealth =
+    toNumber(stored.max) ??
+    toNumber(row.health_max) ??
+    health ??
+    computedFallback;
+
+  const resolvedHealth = Math.max(0, Math.round(health));
+  const resolvedMaxHealth = Math.max(resolvedHealth, Math.round(maxHealth ?? resolvedHealth));
+
   return {
     id: row.character_id,
     userId: row.user_id,
@@ -31,18 +154,20 @@ function mapCharacter(row) {
     stats,
     inventory,
     avatar: row.avatar,
-    health,
-    maxHealth: health,
+    health: resolvedHealth,
+    maxHealth: resolvedMaxHealth,
     updatedAt: row.updated_at,
     createdAt: row.created_at,
   };
 }
 async function fetchAiCharacter(characterId) {
-  const [rows] = await pool.query(
-    `SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, created_at, updated_at
-     FROM ai_characters
-     WHERE character_id = ?
-     LIMIT 1`,
+  const rows = await selectCharacterRows(
+    (healthColumn) => `
+      SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, ${healthColumn} AS health, created_at, updated_at
+      FROM ai_characters
+      WHERE character_id = ?
+      LIMIT 1
+    `,
     [characterId]
   );
   return rows[0] || null;
@@ -93,11 +218,13 @@ async function getCharacterOrImport(characterId) {
 async function getCharactersForGame(gameId) {
   const normalizedGameId = normalizeId(gameId);
   if (!normalizedGameId) return [];
-  const [aiRows] = await pool.query(
-    `SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, created_at, updated_at
-     FROM ai_characters
-     WHERE game_id = ?
-     ORDER BY created_at ASC`,
+  const aiRows = await selectCharacterRows(
+    (healthColumn) => `
+      SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, ${healthColumn} AS health, created_at, updated_at
+      FROM ai_characters
+      WHERE game_id = ?
+      ORDER BY created_at ASC
+    `,
     [normalizedGameId]
   );
   const rows = [...aiRows];
@@ -168,9 +295,16 @@ router.post("/", async (req, res) => {
     await ensureGameExists(normalizedGameId);
     const parsedStats = parseJson(serializedStats, {});
     const computedHealth = calculateHealth(parsedStats);
+    const healthPayload = buildHealthPayload(computedHealth, computedHealth);
+    const healthInfo = await resolveHealthColumnInfo();
+    const healthColumn = healthInfo?.name || "health";
+    const healthPlaceholder = healthInfo?.isJson ? "CAST(? AS JSON)" : "?";
+    const healthValue = healthInfo?.isJson
+      ? JSON.stringify(healthPayload)
+      : Math.round(toNumber(healthPayload.current) ?? computedHealth);
     await pool.query(
-      `INSERT INTO ai_characters (character_id, game_id, user_id, name, class, level, stats, inventory, avatar, health)
-       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ?)`,
+      `INSERT INTO ai_characters (character_id, game_id, user_id, name, class, level, stats, inventory, avatar, ${healthColumn})
+       VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ${healthPlaceholder})`,
       [
         characterId,
         normalizedGameId,
@@ -181,18 +315,63 @@ router.post("/", async (req, res) => {
         serializedStats,
         serializedInventory,
         avatar ? String(avatar) : null,
-        computedHealth,
+        healthValue,
       ]
     );
-    success(res, { character_id: characterId, game_id, name, class: className, level: Number(level) || 1, health: computedHealth }, "캐릭터 생성 완료");
+    success(
+      res,
+      {
+        character_id: characterId,
+        game_id,
+        name,
+        class: className,
+        level: Number(level) || 1,
+        health: computedHealth,
+        maxHealth: computedHealth,
+      },
+      "캐릭터 생성 완료"
+    );
   } catch (err) {
     console.error("캐릭터 생성 오류:", err);
     error(res, "캐릭터 생성 실패");
   }
 });
 async function updateCharacter(characterId, payload) {
+  const existingRows = await selectCharacterRows(
+    (healthColumn) => `
+      SELECT ${healthColumn} AS health, stats
+      FROM ai_characters
+      WHERE character_id = ?
+      LIMIT 1
+    `,
+    [characterId]
+  );
+  if (existingRows.length === 0) return false;
+  const existingRow = existingRows[0];
+
+  const existingStats = parseJson(existingRow.stats, {});
+  const existingHealthParsed = parseHealthColumn(existingRow.health);
+  const existingCurrentRaw =
+    toNumber(existingHealthParsed.current) ??
+    toNumber(existingRow.health_current) ??
+    toNumber(existingRow.health) ??
+    calculateHealth(existingStats);
+  const existingMaxRaw =
+    toNumber(existingHealthParsed.max) ??
+    existingCurrentRaw ??
+    calculateHealth(existingStats);
+
+  const existingCurrent = Math.max(0, Math.round(existingCurrentRaw));
+  const existingMax = Math.max(existingCurrent, Math.round(existingMaxRaw ?? existingCurrent));
+
   const fields = [];
   const values = [];
+  let computedHealth;
+  let nextCurrent = existingCurrent;
+  let nextMax = existingMax;
+  let healthExplicitlyProvided = false;
+  let maxExplicitlyProvided = false;
+
   if (payload.name !== undefined) {
     fields.push("name = ?");
     values.push(payload.name ? String(payload.name) : null);
@@ -205,13 +384,16 @@ async function updateCharacter(characterId, payload) {
     fields.push("level = ?");
     values.push(Number(payload.level) || 1);
   }
-  let computedHealth;
   if (payload.stats !== undefined) {
     const serialized = serializeJson(payload.stats ?? {}) ?? "{}";
     fields.push("stats = CAST(? AS JSON)");
     values.push(serialized);
     const parsed = parseJson(serialized, {});
     computedHealth = calculateHealth(parsed);
+    nextMax = computedHealth;
+    if (!healthExplicitlyProvided) {
+      nextCurrent = Math.min(nextCurrent, nextMax);
+    }
   }
   if (payload.inventory !== undefined) {
     fields.push("inventory = CAST(? AS JSON)");
@@ -222,21 +404,109 @@ async function updateCharacter(characterId, payload) {
     values.push(payload.avatar ? String(payload.avatar) : null);
   }
   if (payload.health !== undefined) {
-    const requested = Number(payload.health);
-    if (!Number.isNaN(requested) && requested > 0) {
-      computedHealth = Math.round(requested);
+    healthExplicitlyProvided = true;
+    const incoming = payload.health;
+    if (typeof incoming === "number") {
+      const numeric = toNumber(incoming);
+      if (numeric !== undefined) {
+        nextCurrent = numeric;
+      }
+    } else if (typeof incoming === "string") {
+      try {
+        const parsed = JSON.parse(incoming);
+        const normalized = parseHealthColumn(parsed);
+        if (normalized.current !== undefined) nextCurrent = normalized.current;
+        if (normalized.max !== undefined) {
+          nextMax = normalized.max;
+          maxExplicitlyProvided = true;
+        }
+      } catch {
+        const numeric = toNumber(incoming);
+        if (numeric !== undefined) {
+          nextCurrent = numeric;
+        }
+      }
+    } else if (incoming && typeof incoming === "object") {
+      const normalized = parseHealthColumn(incoming);
+      if (normalized.current !== undefined) nextCurrent = normalized.current;
+      if (normalized.max !== undefined) {
+        nextMax = normalized.max;
+        maxExplicitlyProvided = true;
+      }
     }
   }
-  if (computedHealth !== undefined) {
-    fields.push("health = ?");
-    values.push(computedHealth);
+  if (payload.maxHealth !== undefined) {
+    maxExplicitlyProvided = true;
+    const numeric = toNumber(payload.maxHealth);
+    if (numeric !== undefined) {
+      nextMax = numeric;
+    }
+  }
+
+  if (computedHealth !== undefined && !healthExplicitlyProvided) {
+    nextCurrent = computedHealth;
+  }
+
+  if (!maxExplicitlyProvided && computedHealth !== undefined) {
+    nextMax = computedHealth;
+  }
+
+  if (nextMax !== undefined && nextCurrent > nextMax) {
+    nextCurrent = nextMax;
+  }
+
+  if (nextCurrent !== undefined) {
+    nextCurrent = Math.max(0, Math.round(nextCurrent));
+  }
+  if (nextMax !== undefined) {
+    nextMax = Math.max(nextCurrent ?? 0, Math.round(nextMax));
+  }
+
+  const shouldUpdateHealth =
+    nextCurrent !== existingCurrent ||
+    nextMax !== existingMax ||
+    healthExplicitlyProvided ||
+    maxExplicitlyProvided ||
+    computedHealth !== undefined;
+
+  let healthUpdatePayload = null;
+  if (shouldUpdateHealth) {
+    healthUpdatePayload = buildHealthPayload(nextCurrent, nextMax);
+    fields.push("__HEALTH_COLUMN__ = __HEALTH_PLACEHOLDER__");
+    values.push(healthUpdatePayload);
   }
   if (fields.length === 0) {
     return false;
   }
+  let resolvedFields = fields;
+  if (fields.some((field) => field.includes("__HEALTH_COLUMN__"))) {
+    const healthInfo = await resolveHealthColumnInfo();
+    if (!healthInfo?.name) {
+      throw new Error("AI characters table missing health column");
+    }
+    resolvedFields = fields.map((field) => {
+      if (!field.includes("__HEALTH_COLUMN__")) return field;
+      const columnName = healthInfo.name;
+      const replacement = healthInfo.isJson ? "CAST(? AS JSON)" : "?";
+      return field
+        .replace("__HEALTH_COLUMN__", columnName)
+        .replace("__HEALTH_PLACEHOLDER__", replacement);
+    });
+    const index = values.lastIndexOf(healthUpdatePayload);
+    if (index !== -1) {
+      if (healthInfo.isJson) {
+        values[index] = JSON.stringify(healthUpdatePayload ?? {});
+      } else {
+        const numericValue = Math.round(
+          toNumber(healthUpdatePayload?.current) ?? toNumber(nextCurrent) ?? 0
+        );
+        values[index] = numericValue;
+      }
+    }
+  }
   values.push(characterId);
   const [result] = await pool.query(
-    `UPDATE ai_characters SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE character_id = ?`,
+    `UPDATE ai_characters SET ${resolvedFields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE character_id = ?`,
     values
   );
   return result.affectedRows > 0;
@@ -289,11 +559,13 @@ router.patch("/game/:gameId", async (req, res) => {
     if (!updated) {
       return error(res, "업데이트할 필드가 없거나 캐릭터를 찾을 수 없습니다.", 400);
     }
-    const [rows] = await pool.query(
-      `SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, health, created_at, updated_at
-       FROM ai_characters
-       WHERE character_id = ?
-       LIMIT 1`,
+    const rows = await selectCharacterRows(
+      (healthColumn) => `
+        SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, ${healthColumn} AS health, created_at, updated_at
+        FROM ai_characters
+        WHERE character_id = ?
+        LIMIT 1
+      `,
       [characterId]
     );
     if (rows.length === 0) {
@@ -314,11 +586,13 @@ router.patch("/:characterId", async (req, res) => {
     if (!updated) {
       return res.status(400).json({ error: "No updates applied or character not found" });
     }
-    const [rows] = await pool.query(
-      `SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, created_at, updated_at
-       FROM ai_characters
-       WHERE character_id = ?
-       LIMIT 1`,
+    const rows = await selectCharacterRows(
+      (healthColumn) => `
+        SELECT character_id, user_id, game_id, name, class, level, stats, inventory, avatar, ${healthColumn} AS health, created_at, updated_at
+        FROM ai_characters
+        WHERE character_id = ?
+        LIMIT 1
+      `,
       [characterId]
     );
     if (rows.length === 0) {
@@ -373,3 +647,5 @@ router.get("/:characterId", async (req, res) => {
 module.exports = router;
 module.exports.getCharactersForGame = getCharactersForGame;
 module.exports.mapCharacter = mapCharacter;
+module.exports.calculateHealth = calculateHealth;
+module.exports.resolveHealthColumnInfo = resolveHealthColumnInfo;

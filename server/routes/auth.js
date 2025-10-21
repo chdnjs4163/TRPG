@@ -2,10 +2,39 @@ const express = require("express"); // Express 모듈 불러오기
 const bcrypt = require("bcrypt"); // 비밀번호 해싱 모듈
 const jwt = require("jsonwebtoken"); // JWT 생성/검증 모듈
 const nodemailer = require("nodemailer"); // 이메일 발송 모듈
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 const pool = require("../db"); // MySQL 연결 풀 (DB 연결)
 
 // Express 라우터 생성
 const router = express.Router();
+
+const avatarUploadDir = path.join(__dirname, "..", "public", "uploads", "avatars");
+fs.mkdirSync(avatarUploadDir, { recursive: true });
+
+const avatarStorage = multer.diskStorage({
+    destination: (_req, _file, cb) => {
+        cb(null, avatarUploadDir);
+    },
+    filename: (_req, file, cb) => {
+        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        const extension = path.extname(file.originalname) || ".png";
+        cb(null, `${uniqueSuffix}${extension}`);
+    },
+});
+
+const avatarUpload = multer({
+    storage: avatarStorage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith("image/")) {
+            cb(new Error("이미지 파일만 업로드할 수 있습니다."));
+            return;
+        }
+        cb(null, true);
+    },
+});
 
 // --- In-memory 이메일 인증 코드 저장소 ---
 // { email: { code: '123456', expiresAt: 1234567890 } }
@@ -38,6 +67,12 @@ async function findUserByUsername(username) {
     return rows[0];
 }
 
+// 닉네임으로 사용자 조회
+async function findUserByNickname(nickname) {
+    const [rows] = await pool.query("SELECT * FROM users WHERE nickname = ?", [nickname]);
+    return rows[0];
+}
+
 // --- Nodemailer 설정 ---
 const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -63,8 +98,8 @@ router.post("/register", async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10); // 비밀번호 해싱
         await pool.query(
-            "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
-            [username, email, hashedPassword]
+            "INSERT INTO users (username, email, password_hash, nickname) VALUES (?, ?, ?, ?)",
+            [username, email, hashedPassword, username]
         );
         res.json({ message: "회원가입 성공" });
     } catch (err) {
@@ -95,6 +130,9 @@ router.post("/login", async (req, res) => {
             userId: user.id, // 추가
             username: user.username,
             email: user.email,
+            nickname: user.nickname,
+            avatarUrl: user.avatar_url,
+            bio: user.bio,
             token
         });
     } catch (err) {
@@ -103,11 +141,15 @@ router.post("/login", async (req, res) => {
     }
 });
 
-// 비밀번호 변경 (이메일, 기존 비밀번호, 새 비밀번호 필요)
-router.post("/change-password", async (req, res) => {
+// 비밀번호 변경 (토큰 기반)
+router.post("/change-password", authenticateToken, async (req, res) => {
     try {
-        const { email, oldPassword, newPassword } = req.body;
-        const user = await findUserByEmail(email);
+        const { oldPassword, newPassword } = req.body;
+        if (!oldPassword || !newPassword) {
+            return res.status(400).json({ error: "비밀번호 정보를 입력해주세요." });
+        }
+
+        const user = await findUserByEmail(req.user.email);
         if (!user) return res.status(404).json({ error: "사용자 없음" });
 
         const ok = await bcrypt.compare(oldPassword, user.password_hash); // 기존 비밀번호 검증
@@ -119,6 +161,117 @@ router.post("/change-password", async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "비밀번호 변경 실패" });
+    }
+});
+
+// 닉네임 중복 확인
+router.post("/check-nickname", authenticateToken, async (req, res) => {
+    try {
+        const { nickname } = req.body;
+        if (!nickname || typeof nickname !== "string" || nickname.trim().length === 0) {
+            return res.status(400).json({ error: "닉네임을 입력해주세요." });
+        }
+
+        const existing = await findUserByNickname(nickname.trim());
+        if (existing && existing.id !== req.user.id) {
+            return res.json({ available: false });
+        }
+        return res.json({ available: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "닉네임 확인 실패" });
+    }
+});
+
+router.post("/profile/avatar", authenticateToken, (req, res) => {
+    avatarUpload.single("avatar")(req, res, async (err) => {
+        if (err) {
+            console.error("프로필 이미지 업로드 실패:", err);
+            return res.status(400).json({ error: err.message || "이미지 업로드에 실패했습니다." });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ error: "업로드된 파일이 없습니다." });
+        }
+
+        try {
+            const relativePath = path.posix.join("uploads", "avatars", req.file.filename);
+            const normalizedPath = relativePath.replace(/\\/g, "/");
+            const host = req.get("host");
+            if (!host) {
+                throw new Error("호스트 정보를 확인할 수 없습니다.");
+            }
+            const publicUrl = `${req.protocol}://${host}/${normalizedPath}`;
+
+            await pool.query("UPDATE users SET avatar_url = ? WHERE id = ?", [publicUrl, req.user.id]);
+
+            res.json({
+                message: "프로필 이미지가 업로드되었습니다.",
+                avatarUrl: publicUrl,
+                path: `/${normalizedPath}`,
+            });
+        } catch (uploadError) {
+            console.error("프로필 이미지 저장 실패:", uploadError);
+            res.status(500).json({ error: "프로필 이미지 저장 중 오류가 발생했습니다." });
+        }
+    });
+});
+
+// 프로필 업데이트
+router.put("/profile", authenticateToken, async (req, res) => {
+    try {
+        const { nickname, avatarUrl, bio } = req.body || {};
+
+        const updates = [];
+        const values = [];
+
+        if (nickname !== undefined) {
+            const trimmed = typeof nickname === "string" ? nickname.trim() : "";
+            if (trimmed.length === 0) {
+                return res.status(400).json({ error: "닉네임을 입력해주세요." });
+            }
+            const existing = await findUserByNickname(trimmed);
+            if (existing && existing.id !== req.user.id) {
+                return res.status(409).json({ error: "이미 사용 중인 닉네임입니다." });
+            }
+            updates.push("nickname = ?");
+            values.push(trimmed);
+        }
+
+        if (avatarUrl !== undefined) {
+            updates.push("avatar_url = ?");
+            values.push(avatarUrl ? String(avatarUrl) : null);
+        }
+
+        if (bio !== undefined) {
+            updates.push("bio = ?");
+            values.push(bio ? String(bio) : null);
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: "업데이트할 항목이 없습니다." });
+        }
+
+        values.push(req.user.id);
+        const sql = `UPDATE users SET ${updates.join(", ")} WHERE id = ?`;
+        await pool.query(sql, values);
+
+        const [rows] = await pool.query("SELECT id, username, email, nickname, avatar_url, bio FROM users WHERE id = ?", [req.user.id]);
+        const updated = rows[0];
+        if (!updated) {
+            return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+        }
+        res.json({ message: "프로필이 업데이트되었습니다.", profile: {
+            id: updated.id,
+            username: updated.username,
+            email: updated.email,
+            nickname: updated.nickname,
+            avatarUrl: updated.avatar_url,
+            bio: updated.bio,
+        }});
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "프로필 업데이트 실패" });
     }
 });
 
@@ -209,7 +362,14 @@ router.get("/me", authenticateToken, async (req, res) => {
         if (!user) return res.status(404).json({ error: "사용자 없음" });
 
         // 필요한 사용자 정보만 반환
-        res.json({ id: user.id, username: user.username, email: user.email });
+        res.json({
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            nickname: user.nickname,
+            avatarUrl: user.avatar_url,
+            bio: user.bio,
+        });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "사용자 정보 조회 실패" });

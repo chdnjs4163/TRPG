@@ -52,7 +52,7 @@ export function GameSidebar({ players, onPlayerClick }: GameSidebarProps) {
           <TabsList className={cn("grid h-14 w-full", isCollapsed ? "grid-cols-1" : "grid-cols-2")}>
             <TabsTrigger value="players" className="flex items-center justify-center">
               <Users className="h-5 w-5" />
-              {!isCollapsed && <span className="ml-2">플레이어</span>}
+              {!isCollapsed && <span className="ml-2">캐릭터</span>}
             </TabsTrigger>
             <TabsTrigger value="guide" className={cn(isCollapsed && "hidden")}>
               <BookOpen className="h-5 w-5 mr-2" />
