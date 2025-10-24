@@ -378,3 +378,4 @@ router.get("/me", authenticateToken, async (req, res) => {
 
 // 라우터 내보내기
 module.exports = router;
+module.exports.authenticateToken = authenticateToken;

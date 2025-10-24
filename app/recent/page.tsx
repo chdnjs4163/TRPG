@@ -2,7 +2,6 @@
 "use client";
 
 import { MainNavigation } from "@/components/main-navigation";
-import { UserNav } from "@/components/user-nav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Search, Filter } from "lucide-react";
@@ -72,7 +71,6 @@ export default function RecentPage() {
             <h1 className="text-3xl font-bold">최근 플레이</h1>
             <p className="text-muted-foreground mt-2">최근에 플레이한 TRPG 게임 기록을 확인하세요</p>
           </div>
-          <UserNav />
         </div>
 
         {/* 검색 및 필터 */}

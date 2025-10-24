@@ -25,7 +25,6 @@ import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { MainNavigation } from "@/components/main-navigation";
-import { UserNav } from "@/components/user-nav";
 import { GameInfo } from "@/components/game-info";
 import CharacterCreation from "@/components/character-creation";
 import CreatingCharacters from "@/components/creating_characters";
@@ -148,7 +147,6 @@ export default function TemplatesPage() {
               <h1 className="text-3xl font-bold">게임 템플릿</h1>
               <p className="text-muted-foreground mt-2">다양한 장르의 TRPG 게임 템플릿을 찾아보세요</p>
             </div>
-            <UserNav />
           </div>
 
           {/* 검색/장르 필터 */}

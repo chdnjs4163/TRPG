@@ -9,6 +9,8 @@ const {
   serializeJson,
   ensureGameExists,
 } = require("../utils/ai");
+const authRouter = require("./auth");
+const authenticateToken = authRouter.authenticateToken;
 const charactersModule = require("./characters");
 const getCharactersForGame = charactersModule.getCharactersForGame;
 const mapCharacter = charactersModule.mapCharacter;
@@ -56,6 +58,33 @@ async function getGameTitleRecord(gameId) {
 }
 
 // ===== 기존 슬롯 관련 엔드포인트 (호환성 유지) =====
+
+router.get("/:gameId/access", authenticateToken, async (req, res) => {
+  try {
+    const gameId = normalizeId(req.params.gameId);
+    if (!gameId) {
+      return res.status(400).json({ error: "Invalid game id" });
+    }
+    const [rows] = await pool.query(
+      `SELECT user_id
+       FROM games
+       WHERE game_id = ?
+       LIMIT 1`,
+      [gameId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Game not found" });
+    }
+    const ownerId = normalizeId(rows[0].user_id);
+    if (ownerId !== normalizeId(req.user?.id)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[games.access] error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // 유저별 게임 슬롯 조회
 router.get("/user/:userId", async (req, res) => {

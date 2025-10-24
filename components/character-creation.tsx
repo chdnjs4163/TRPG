@@ -15,8 +15,8 @@ const STAT_KEYS = ["strength", "dexterity", "wisdom", "charisma"] as const;
 type StatKey = (typeof STAT_KEYS)[number];
 type CharacterStats = Record<StatKey, number>;
 
-const RANDOM_POINTS = 20;
-const PLAYER_POINTS = 10;
+const RANDOM_POINTS = 25;
+const PLAYER_POINTS = 5;
 const STAT_LABELS: Record<StatKey, string> = {
   strength: "힘 (STR)",
   dexterity: "민첩 (DEX)",
@@ -57,7 +57,7 @@ export default function CharacterCreation({
   onCharacterCreated,
   onCancel,
 }: CharacterCreationProps) {
-  const [playerPointsBudget, setPlayerPointsBudget] = useState<number>(PLAYER_POINTS);
+  const [playerPointsBudget] = useState<number>(PLAYER_POINTS);
   const [randomStats, setRandomStats] = useState<CharacterStats>(() => rollRandomStats());
   const [allocatedStats, setAllocatedStats] = useState<CharacterStats>(() => createEmptyStats());
   const [characterData, setCharacterData] = useState<CharacterCreationData>({
@@ -92,7 +92,6 @@ export default function CharacterCreation({
   };
 
   const handleRerollStats = () => {
-    setPlayerPointsBudget((prev) => Math.max(prev - 1, 0));
     setRandomStats(rollRandomStats());
     setAllocatedStats(createEmptyStats());
   };
@@ -150,10 +149,10 @@ export default function CharacterCreation({
               <div>
                 <p className="text-lg font-semibold">기본 스탯</p>
                 <p className="text-sm text-muted-foreground">
-                  랜덤 배분 {RANDOM_POINTS} + 플레이어 배분 {playerPointsBudget} = 총 {RANDOM_POINTS + playerPointsBudget}
+                  랜덤 배분 {RANDOM_POINTS} + 플레이어 배분 {PLAYER_POINTS} = 총 {RANDOM_POINTS + PLAYER_POINTS}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  랜덤 재배치 시 플레이어 배분 포인트가 1 감소합니다.
+                  랜덤 재배치는 제한 없이 가능합니다.
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={handleRerollStats}>

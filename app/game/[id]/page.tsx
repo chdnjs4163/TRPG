@@ -5,6 +5,7 @@ import React from "react";
 import axios from "axios";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { AiWebSocketClient, type AiServerResponse } from "@/lib/ws";
 import { AI_SERVER_HTTP_URL, API_BASE_URL } from "@/app/config";
 
@@ -45,6 +46,7 @@ const normalizeInventory = (value: any): any[] => {
 };
 
 const DEFAULT_PLAYER_AVATAR = "/placeholder-user.jpg";
+const GM_AVATAR_PATH = "/images/gamemaster.png";
 const AVATAR_UPDATED_EVENT = "trpg-avatar-updated";
 
 const getStoredProfileAvatar = (): string | null => {
@@ -419,6 +421,7 @@ export default function GamePage() {
   const searchParams = useSearchParams();
   const params = useParams<{ id: string }>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const summaryRequestedRef = useRef(false);
 
   // --- 상태 관리 ---
   const [message, setMessage] = useState("");
@@ -434,12 +437,21 @@ export default function GamePage() {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [historyChunks, setHistoryChunks] = useState<HistoryChunk[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyReady, setHistoryReady] = useState(false);
   const [aiServerOnline, setAiServerOnline] = useState(true);
+  const [authState, setAuthState] = useState<"pending" | "authorized" | "unauthorized" | "forbidden">("pending");
   const socketRef = useRef<AiWebSocketClient | null>(null);
   const lastAiMessageRef = useRef<number | null>(null);
   const playerNameRef = useRef<string>("캐릭터");
+  const hasExistingHistoryRef = useRef(false);
   const activeCharacterId = players[0]?.id;
-  const storageKeyId = gameId || (params?.id ? String(params.id) : null);
+  const routeParamGameId = params?.id ? String(params.id) : null;
+  const storageKeyId = gameId || routeParamGameId;
+  const requestedGamePath = routeParamGameId ? `/game/${routeParamGameId}` : "/game";
+  const gmAvatarSrc = useMemo(
+    () => resolveStaticUrl(GM_AVATAR_PATH) ?? GM_AVATAR_PATH,
+    [],
+  );
 
   const activePlayer = useMemo(() => {
     if (players.length === 0) return null;
@@ -450,6 +462,67 @@ export default function GamePage() {
     return players[0];
   }, [players, selectedPlayerId]);
   const activePlayerId = selectedPlayerId ?? activePlayer?.id;
+  const isPlayerDead = useMemo(() => {
+    const health = activePlayer?.health;
+    if (typeof health !== "number") return false;
+    return health <= 0;
+  }, [activePlayer]);
+
+  useEffect(() => {
+    summaryRequestedRef.current = false;
+  }, [sessionId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const verifyAccess = async () => {
+      if (typeof window === "undefined") return;
+      if (!routeParamGameId) {
+        if (!cancelled) {
+          setAuthState("forbidden");
+        }
+        return;
+      }
+      const token = localStorage.getItem("token");
+      if (!token) {
+        if (!cancelled) {
+          setAuthState("unauthorized");
+        }
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/games/${routeParamGameId}/access`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (cancelled) return;
+        if (res.status === 200) {
+          setAuthState("authorized");
+          return;
+        }
+        if (res.status === 401) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("userId");
+          setAuthState("unauthorized");
+          return;
+        }
+        if (res.status === 403 || res.status === 404) {
+          setAuthState("forbidden");
+          return;
+        }
+        setAuthState("forbidden");
+      } catch (err) {
+        if (!cancelled) {
+          console.error("[GamePage] 접근 검증 실패:", err);
+          setAuthState("forbidden");
+        }
+      }
+    };
+    void verifyAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [routeParamGameId]);
 
   useEffect(() => {
     const fallbackName = players[0]?.name ?? "캐릭터";
@@ -504,7 +577,9 @@ export default function GamePage() {
         }
         return baseContent;
       })();
-      const avatarSrc = isPlayer ? matchingPlayer?.avatar ?? resolvePlayerAvatar() : undefined;
+      const avatarSrc = isPlayer
+        ? matchingPlayer?.avatar ?? resolvePlayerAvatar()
+        : gmAvatarSrc;
       const avatarInitial =
         typeof msg.sender === "string" && msg.sender.length > 0
           ? msg.sender[0]
@@ -556,7 +631,7 @@ export default function GamePage() {
         </div>
       );
     },
-    [players, showImagePrompt]
+    [gmAvatarSrc, players, showImagePrompt]
   );
 
   const persistCharacterSnapshot = useCallback(
@@ -623,8 +698,19 @@ export default function GamePage() {
         return prev;
       });
       persistCharacterSnapshot(normalizedPlayer, gameKey);
+      if (typeof window !== "undefined") {
+        const key = gameKey ?? storageKeyId;
+        if (key) {
+          const deathKey = `deadGame:${key}`;
+          if (typeof normalizedPlayer.health === "number" && normalizedPlayer.health <= 0) {
+            localStorage.setItem(deathKey, "true");
+          } else {
+            localStorage.removeItem(deathKey);
+          }
+        }
+      }
     },
-    [persistCharacterSnapshot],
+    [persistCharacterSnapshot, storageKeyId],
   );
 
   const persistActiveOptions = useCallback(
@@ -1015,7 +1101,8 @@ export default function GamePage() {
 
   // 플레이어 설정 전용 useEffect (쿼리 캐릭터 > 로컬 저장 > 서버 캐릭터 순으로 복원, 이후 서버 재조회)
   useEffect(() => {
-    const routeGameId = params?.id ? String(params.id) : null;
+    if (authState !== "authorized") return;
+    const routeGameId = routeParamGameId;
     const characterParam = searchParams.get("character");
 
     let shouldFetchFromServer = true;
@@ -1052,16 +1139,22 @@ export default function GamePage() {
     if (routeGameId && shouldFetchFromServer) {
       void fetchLatestCharacter(routeGameId, "initial");
     }
-  }, [searchParams, params, applyPlayerState, fetchLatestCharacter]);
+  }, [authState, searchParams, routeParamGameId, applyPlayerState, fetchLatestCharacter]);
 
   useEffect(() => {
-    if (!gameId) return;
+    if (authState !== "authorized") return;
+    if (!gameId) {
+      hasExistingHistoryRef.current = false;
+      setHistoryReady(false);
+      return;
+    }
     let cancelled = false;
 
     const loadHistory = async () => {
       console.log("[History] 대화 기록 요청 시작", { gameId, aiServerOnline });
       try {
         setHistoryLoading(true);
+        setHistoryReady(false);
         console.log("[History] GET", `${FLASK_AI_SERVICE_URL}/api/history/${gameId}`);
         const res = await fetch(`${FLASK_AI_SERVICE_URL}/api/history/${gameId}`);
         console.log("[History] 응답 상태", res.status);
@@ -1073,6 +1166,7 @@ export default function GamePage() {
             setMessages([]);
           }
           setAiServerOnline(false);
+          hasExistingHistoryRef.current = false;
           console.warn("[History] 기록 없음 또는 AI 서버 다운", { status: res.status });
           return;
         }
@@ -1153,6 +1247,15 @@ export default function GamePage() {
         setHistoryChunks(chunkList.reverse());
         setMessages(mapped);
         console.log("[History] 대화 기록 불러오기 완료", { count: mapped.length });
+        const hasHistory = mapped.length > 0;
+        hasExistingHistoryRef.current = hasHistory;
+        if (hasHistory && typeof window !== "undefined") {
+          const summaryFlagKey =
+            storageKeyId != null ? `game:${storageKeyId}:initial-summary-sent` : null;
+          if (summaryFlagKey) {
+            localStorage.setItem(summaryFlagKey, "true");
+          }
+        }
         if (typeof window !== "undefined" && gameId) {
           const stored = localStorage.getItem(`activeOptions:${gameId}`);
           if (stored) {
@@ -1181,10 +1284,12 @@ export default function GamePage() {
               type: "system",
             },
           ]);
+          hasExistingHistoryRef.current = false;
         }
       } finally {
         if (!cancelled) {
           setHistoryLoading(false);
+          setHistoryReady(true);
           console.log("[History] 로딩 종료");
         }
       }
@@ -1195,7 +1300,7 @@ export default function GamePage() {
     return () => {
       cancelled = true;
     };
-  }, [gameId, aiServerOnline, updateActiveOptions]);
+  }, [authState, gameId, aiServerOnline, storageKeyId, updateActiveOptions]);
 
   // AI 세션 시작 + 시나리오 로딩
   useEffect(() => {
@@ -1229,6 +1334,7 @@ export default function GamePage() {
   }, [messages]);
 
   useEffect(() => {
+    if (authState !== "authorized") return;
     const startSessionAndFetchScenario = async () => {
       if (!aiServerOnline) {
         console.warn("[Session] AI 서버 오프라인 상태, 세션 생성을 건너뜁니다.");
@@ -1241,7 +1347,7 @@ export default function GamePage() {
         console.log("[Session] 세션 초기화 시작", { templateTitle });
 
         // 1) 세션 시작 (게임/유저/캐릭터 ID 전달)
-        const routeGameId = params?.id ? String(params.id) : null;
+        const routeGameId = routeParamGameId;
         const resolvedGameId =
           routeGameId || searchParams.get("gameId") || searchParams.get("id") || "";
         setGameId(resolvedGameId || null);
@@ -1313,18 +1419,63 @@ export default function GamePage() {
         setAiServerOnline(false);
       } finally {
         setIsLoading(false);
+        setGameTitle((prev) => (prev === "시나리오 생성 중..." ? "" : prev));
       }
     };
     startSessionAndFetchScenario();
-  }, [searchParams, aiServerOnline]);
+  }, [authState, searchParams, aiServerOnline, routeParamGameId]);
 
   // WebSocket 연결 관리
   useEffect(() => {
-    if (!sessionId || !gameId) return;
+    if (authState !== "authorized") return;
+    if (!sessionId || !gameId || !historyReady) return;
     const client = new AiWebSocketClient({
       gameId,
       sessionId,
       onEvent: (evt) => {
+        if (evt.type === "open") {
+          if (!summaryRequestedRef.current) {
+            const summaryFlagKey =
+              storageKeyId != null ? `game:${storageKeyId}:initial-summary-sent` : null;
+            const isBrowser = typeof window !== "undefined";
+            const alreadySent =
+              summaryFlagKey && isBrowser
+                ? localStorage.getItem(summaryFlagKey) === "true"
+                : false;
+            const hasHistory = hasExistingHistoryRef.current;
+
+            if (alreadySent || hasHistory) {
+              summaryRequestedRef.current = true;
+              if (!alreadySent && hasHistory && summaryFlagKey && isBrowser) {
+                localStorage.setItem(summaryFlagKey, "true");
+              }
+              console.log("[GamePage] 초기 상황 요약 요청을 건너뜁니다.", {
+                summaryFlagKey,
+                alreadySent,
+                hasHistory,
+              });
+              return;
+            }
+
+            const sent = client.sendUserMessage("현재까지의 게임 상황을 간단히 요약해 주세요.");
+            if (sent) {
+              summaryRequestedRef.current = true;
+              if (summaryFlagKey && isBrowser) {
+                localStorage.setItem(summaryFlagKey, "true");
+              }
+              console.log("[GamePage] 초기 상황 요약 요청 메시지를 전송했습니다.");
+            } else {
+              console.warn("[GamePage] 초기 상황 요약 요청 전송 실패 - 소켓 연결 상태를 확인하세요.");
+            }
+          }
+          return;
+        }
+
+        if (evt.type === "close") {
+          summaryRequestedRef.current = false;
+          return;
+        }
+
         if (evt.type !== "message") return;
         const m = evt.data;
         if (m.kind === "ai_response") {
@@ -1500,7 +1651,16 @@ export default function GamePage() {
         socketRef.current = null;
       }
     };
-  }, [sessionId, gameId, updateCharacterFromAiPayload, fetchLatestCharacter, updateActiveOptions]);
+  }, [
+    sessionId,
+    gameId,
+    historyReady,
+    storageKeyId,
+    authState,
+    updateCharacterFromAiPayload,
+    fetchLatestCharacter,
+    updateActiveOptions,
+  ]);
 
 
   // 채팅 메시지 스크롤
@@ -1508,9 +1668,18 @@ export default function GamePage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const isSendDisabled = isAwaitingResponse || message.trim().length === 0;
+  const isSendDisabled =
+    isAwaitingResponse || message.trim().length === 0 || isPlayerDead;
 
   const sendChatMessage = (content: string) => {
+    if (authState !== "authorized") {
+      console.warn("[GamePage] 인증되지 않은 상태로 메시지를 전송할 수 없습니다.");
+      return;
+    }
+    if (isPlayerDead) {
+      console.warn("[GamePage] 캐릭터 사망 상태에서는 메시지를 전송할 수 없습니다.");
+      return;
+    }
     if (isAwaitingResponse) {
       console.warn("[GamePage] GM 응답 대기 중이라 메시지를 전송할 수 없습니다.");
       return;
@@ -1576,11 +1745,27 @@ export default function GamePage() {
 
   const handleSendMessage = () => {
     const content = message.trim();
+    if (authState !== "authorized") {
+      console.warn("[GamePage] 인증되지 않은 상태에서는 메시지를 보낼 수 없습니다.");
+      return;
+    }
+    if (isPlayerDead) {
+      console.warn("[GamePage] 사망 상태에서는 직접 메시지를 보낼 수 없습니다.");
+      return;
+    }
     if (!content) return;
     sendChatMessage(content);
   };
 
   const handleOptionClick = (option: string) => {
+    if (authState !== "authorized") {
+      console.warn("[GamePage] 인증되지 않은 상태에서는 옵션을 선택할 수 없습니다.");
+      return;
+    }
+    if (isPlayerDead) {
+      console.warn("[GamePage] 사망 상태에서는 옵션을 선택할 수 없습니다.");
+      return;
+    }
     if (isAwaitingResponse) {
       console.warn("[GamePage] 응답 대기 중에는 옵션을 선택할 수 없습니다.");
       return;
@@ -1588,6 +1773,40 @@ export default function GamePage() {
     console.log("[GamePage] 옵션 선택:", option);
     sendChatMessage(option);
   };
+
+  if (authState === "pending") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
+        접근 권한을 확인하는 중입니다...
+      </div>
+    );
+  }
+
+  if (authState === "unauthorized") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
+        <h2 className="text-xl font-semibold">로그인이 필요합니다.</h2>
+        <p className="text-sm text-muted-foreground">게임에 참여하려면 먼저 로그인해주세요.</p>
+        <Button asChild>
+          <Link href={`/login?redirect=${encodeURIComponent(requestedGamePath)}`}>로그인 페이지로 이동</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (authState === "forbidden") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
+        <h2 className="text-xl font-semibold">접근 권한이 없습니다.</h2>
+        <p className="text-sm text-muted-foreground">
+          요청한 게임에 대한 권한이 없거나 존재하지 않는 게임입니다.
+        </p>
+        <Button asChild variant="outline">
+          <Link href="/recent">내 게임 목록으로 이동</Link>
+        </Button>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -1799,7 +2018,7 @@ export default function GamePage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleOptionClick(option)}
-                    disabled={isAwaitingResponse}
+                    disabled={isAwaitingResponse || isPlayerDead}
                   >
                     {option}
                   </Button>
@@ -1807,15 +2026,36 @@ export default function GamePage() {
               </div>
             </div>
           )}
+          {isPlayerDead && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 text-destructive px-4 py-3">
+              <p className="font-semibold">사망하였습니다.</p>
+              <p className="text-sm text-destructive/80 mt-1">
+                캐릭터가 사망해 채팅 입력이 비활성화되었습니다. 아래 버튼을 통해 기록만 확인할 수 있습니다.
+              </p>
+              {storageKeyId && (
+                <div className="mt-3">
+                  <Button asChild size="sm" variant="outline" className="border-destructive text-destructive">
+                    <Link href={`/game/${storageKeyId}/history`}>채팅 기록 보기</Link>
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex gap-2 border-t pt-4">
             <Textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-                placeholder={isAwaitingResponse ? "GM 응답을 기다리는 중입니다..." : "메시지를 입력하세요..."}
+              placeholder={
+                isPlayerDead
+                  ? "캐릭터가 사망하여 메시지를 보낼 수 없습니다."
+                  : isAwaitingResponse
+                    ? "GM 응답을 기다리는 중입니다..."
+                    : "메시지를 입력하세요..."
+              }
               className="flex-1 resize-none"
-              disabled={isAwaitingResponse}
+              disabled={isAwaitingResponse || isPlayerDead}
               onKeyDown={(e) => {
-                if (isAwaitingResponse) return;
+                if (isAwaitingResponse || isPlayerDead) return;
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSendMessage();
