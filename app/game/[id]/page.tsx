@@ -1457,7 +1457,7 @@ export default function GamePage() {
               return;
             }
 
-            const sent = client.sendUserMessage("현재까지의 게임 상황을 간단히 요약해 주세요.");
+            const sent = client.sendUserMessage("현재 게임 상황을 한국어로 요약해 주세요.");
             if (sent) {
               summaryRequestedRef.current = true;
               if (summaryFlagKey && isBrowser) {

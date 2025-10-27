@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Gamepad2, Info } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { API_BASE_URL } from "@/app/config";
 
@@ -46,20 +47,23 @@ interface ThemeGroup {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [activeSection, setActiveSection] = useState<string>("홈");
   const [recentGamesPage, setRecentGamesPage] = useState(0);
   const [themesPage, setThemesPage] = useState(0);
   const [recentGames, setRecentGames] = useState<Game[]>([]);
   const [gameTitles, setGameTitles] = useState<GameTitle[]>([]);
+  const [authState, setAuthState] = useState<"pending" | "authorized" | "unauthorized">("pending");
 
   const ITEMS_PER_PAGE = 5;
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const userId = localStorage.getItem("userId");
+    let cancelled = false;
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
 
     if (!token || !userId) {
-      window.location.href = "/login";
+      setAuthState("unauthorized");
       return;
     }
 
@@ -67,18 +71,25 @@ export default function DashboardPage() {
     console.log("로그인된 userId:", userId);
 
     // --- 로그인 사용자 정보 가져오기 & 콘솔 출력 ---
-    fetch("http://192.168.26.165:1024/api/auth/me", {
+    fetch(`${API_BASE_URL}/api/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
         .then(res => res.json())
         .then(data => {
+          if (cancelled) return;
+          if (!data || data.error) {
+            throw new Error(data?.error || "사용자 정보 없음");
+          }
           console.log("로그인 사용자 정보:", data); // 👈 여기서 출력
+          setAuthState("authorized");
         })
         .catch(err => {
           console.error("사용자 정보 조회 실패:", err);
           localStorage.removeItem("token");
           localStorage.removeItem("userId");
-          window.location.href = "/login";
+          if (!cancelled) {
+            setAuthState("unauthorized");
+          }
         });
 
 
@@ -120,6 +131,9 @@ export default function DashboardPage() {
         setGameTitles(normalized);
       })
       .catch((err) => console.error("게임 타이틀 불러오기 실패:", err));
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleNavItemClick = (item: NavItem) => {
@@ -180,6 +194,31 @@ export default function DashboardPage() {
       setThemesPage(0);
     }
   }, [themeGroups.length, themesPage]);
+
+  useEffect(() => {
+    if (authState === "unauthorized") {
+      router.replace(`/login?redirect=${encodeURIComponent("/dashboard")}`);
+    }
+  }, [authState, router]);
+
+  if (authState === "pending") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
+        대시보드를 불러오는 중입니다...
+      </div>
+    );
+  }
+
+  if (authState !== "authorized") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
+        <h2 className="text-xl font-semibold">로그인이 필요합니다.</h2>
+        <Button asChild>
+          <Link href="/login">로그인 페이지로 이동</Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
       <div className="flex min-h-screen bg-background">
