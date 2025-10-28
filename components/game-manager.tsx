@@ -67,7 +67,7 @@ export default function GameManager() {
     );
   }
   
-  const handleDeleteCharacter = (characterId: number) => {
+  const handleDeleteCharacter = (characterId: CharacterProfile["id"]) => {
   const updated = existingCharacters.filter((c) => c.id !== characterId);
   setExistingCharacters(updated);
   localStorage.setItem("characters", JSON.stringify(updated));

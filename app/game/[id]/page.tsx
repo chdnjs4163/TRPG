@@ -245,7 +245,7 @@ interface Player {
 }
 
 const FLASK_AI_SERVICE_URL = AI_SERVER_HTTP_URL;
-const CHAR_API_URL = "http://192.168.26.165:1024/api/characters";
+const CHAR_API_URL = `${API_BASE_URL}/api/characters`;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

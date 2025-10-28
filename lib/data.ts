@@ -3,7 +3,7 @@
 // 다른 컴포넌트나 페이지에서 이 데이터를 가져와 사용할 수 있음
 // 캐릭터 타입을 정의하고 내보냅니다 (export).
 export interface CharacterProfile {
-  id: number;
+  id: number | string;
   name: string;
   race: string;
   class: string;

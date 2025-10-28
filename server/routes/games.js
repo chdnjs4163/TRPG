@@ -2,23 +2,15 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const { success, error } = require("../utils/response");
-const {
-  uuid,
-  normalizeId,
-  parseJson,
-  serializeJson,
-  ensureGameExists,
-} = require("../utils/ai");
+const { uuid, normalizeId, parseJson, serializeJson, ensureGameExists } = require("../utils/ai");
 const authRouter = require("./auth");
 const authenticateToken = authRouter.authenticateToken;
-const charactersModule = require("./characters");
-const getCharactersForGame = charactersModule.getCharactersForGame;
-const mapCharacter = charactersModule.mapCharacter;
-const calculateHealth = charactersModule.calculateHealth;
-const resolveHealthColumnInfo = charactersModule.resolveHealthColumnInfo;
-const gameTitlesModule = require("./game_titles");
-const fetchTitleById = gameTitlesModule.fetchTitleById;
-const { serializeScenario } = require("../utils/scenario");
+const {
+  getCharactersForGame,
+  mapCharacter,
+  calculateHealth,
+  resolveHealthColumnInfo,
+} = require("./characters");
 
 function formatGameRow(row) {
   return {
@@ -43,21 +35,82 @@ async function fetchGame(gameId) {
   return rows[0] || null;
 }
 
-async function getGameTitleRecord(gameId) {
+async function verifyOwnership(gameId, userId) {
+  if (!gameId || !userId) return false;
   const [rows] = await pool.query(
-    `SELECT game_id, title_id
-     FROM games
-     WHERE game_id = ?
+    `SELECT 1
+     FROM ai_characters
+     WHERE game_id = ? AND user_id = ?
      LIMIT 1`,
-    [gameId]
+    [gameId, userId]
   );
-  if (!rows.length) {
-    return { game: null, titleId: null };
-  }
-  return { game: rows[0], titleId: rows[0].title_id };
+  return rows.length > 0;
 }
 
-// ===== 기존 슬롯 관련 엔드포인트 (호환성 유지) =====
+router.get("/user/:userId", async (req, res) => {
+  try {
+    const userId = normalizeId(req.params.userId);
+    if (!userId) {
+      return error(res, "유효한 사용자 ID가 필요합니다.", 400);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT
+         g.game_id,
+         g.title,
+         g.genre,
+         g.difficulty,
+         g.metadata,
+         g.created_at,
+         g.updated_at,
+         c.name AS character_name,
+         c.avatar AS character_avatar,
+         c.updated_at AS character_updated_at
+       FROM ai_games g
+       JOIN ai_characters c
+         ON c.game_id = g.game_id
+       WHERE c.user_id = ?
+         AND NOT EXISTS (
+           SELECT 1
+           FROM ai_characters c2
+           WHERE c2.game_id = c.game_id
+             AND c2.user_id = c.user_id
+             AND (
+               c2.updated_at > c.updated_at OR
+               (c2.updated_at = c.updated_at AND c2.created_at > c.created_at)
+             )
+         )
+       ORDER BY COALESCE(c.updated_at, g.updated_at, g.created_at) DESC`,
+      [userId]
+    );
+
+    const normalized = rows.map((row) => {
+      const metadata = parseJson(row.metadata, null);
+      const thumbnail =
+        metadata?.thumbnail ||
+        metadata?.image ||
+        metadata?.thumbnailUrl ||
+        metadata?.thumbnail_url ||
+        null;
+      return {
+        id: row.game_id,
+        title: row.title,
+        date: row.character_updated_at || row.updated_at || row.created_at,
+        image: thumbnail || row.character_avatar || null,
+        status: metadata?.status || null,
+        titleId: metadata?.templateId || metadata?.titleId || null,
+        characterName: row.character_name || null,
+        genre: row.genre || metadata?.genre || metadata?.theme || null,
+        description: metadata?.description || null,
+      };
+    });
+
+    success(res, normalized);
+  } catch (err) {
+    console.error("[games.user] error:", err);
+    error(res, "게임 목록을 불러오지 못했습니다.");
+  }
+});
 
 router.get("/:gameId/access", authenticateToken, async (req, res) => {
   try {
@@ -65,18 +118,16 @@ router.get("/:gameId/access", authenticateToken, async (req, res) => {
     if (!gameId) {
       return res.status(400).json({ error: "Invalid game id" });
     }
-    const [rows] = await pool.query(
-      `SELECT user_id
-       FROM games
-       WHERE game_id = ?
-       LIMIT 1`,
-      [gameId]
-    );
-    if (rows.length === 0) {
+    const game = await fetchGame(gameId);
+    if (!game) {
       return res.status(404).json({ error: "Game not found" });
     }
-    const ownerId = normalizeId(rows[0].user_id);
-    if (ownerId !== normalizeId(req.user?.id)) {
+    const ownerId = normalizeId(req.user?.id);
+    if (!ownerId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const ownsGame = await verifyOwnership(gameId, ownerId);
+    if (!ownsGame) {
       return res.status(403).json({ error: "Forbidden" });
     }
     res.json({ ok: true });
@@ -86,116 +137,24 @@ router.get("/:gameId/access", authenticateToken, async (req, res) => {
   }
 });
 
-// 유저별 게임 슬롯 조회
-router.get("/user/:userId", async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      `SELECT 
-          g.game_id AS id,
-          gt.title_name AS title,
-          gt.thumbnail_url AS image,
-          g.last_played AS date,
-          g.status,
-          g.title_id,
-          COALESCE(
-            (SELECT name FROM ai_characters WHERE game_id = g.game_id ORDER BY updated_at DESC, created_at DESC LIMIT 1),
-            (SELECT name FROM characters WHERE game_id = g.game_id ORDER BY created_at DESC LIMIT 1)
-          ) AS character_name
-       FROM games g
-       JOIN game_titles gt ON g.title_id = gt.title_id
-       WHERE g.user_id = ?
-       ORDER BY g.last_played DESC`,
-      [req.params.userId]
-    );
-    success(res, rows);
-  } catch (err) {
-    console.error(err);
-    error(res, "게임 슬롯 조회 실패");
-  }
-});
-
-// 기존 슬롯 업데이트 (status, last_played 등)
-router.put("/:gameId", async (req, res) => {
-  const { status, last_played } = req.body;
-  try {
-    await pool.query("UPDATE games SET status=?, last_played=? WHERE game_id=?", [
-      status,
-      last_played,
-      req.params.gameId,
-    ]);
-    success(res, null, "게임 슬롯 업데이트 완료");
-  } catch (err) {
-    console.error(err);
-    error(res, "게임 슬롯 업데이트 실패");
-  }
-});
-
-// 특정 사용자와 타이틀로 최근 슬롯 조회
-router.get("/find", async (req, res) => {
-  try {
-    const { user_id, title_id } = req.query;
-    if (!user_id || !title_id) return error(res, "user_id, title_id가 필요합니다.", 400);
-    const [rows] = await pool.query(
-      `SELECT 
-          g.game_id AS id,
-          gt.title_name AS title,
-          gt.thumbnail_url AS image,
-          g.last_played AS date,
-          g.status,
-          g.title_id,
-          COALESCE(
-            (SELECT name FROM ai_characters WHERE game_id = g.game_id ORDER BY updated_at DESC, created_at DESC LIMIT 1),
-            (SELECT name FROM characters WHERE game_id = g.game_id ORDER BY created_at DESC LIMIT 1)
-          ) AS character_name
-       FROM games g
-       JOIN game_titles gt ON g.title_id = gt.title_id
-       WHERE g.user_id = ? AND g.title_id = ?
-       ORDER BY g.last_played DESC
-       LIMIT 1`,
-      [user_id, title_id]
-    );
-    success(res, rows[0] || null);
-  } catch (err) {
-    console.error(err);
-    error(res, "게임 슬롯 조회 실패");
-  }
-});
-
-// 게임 슬롯 생성
 router.post("/", async (req, res) => {
-  const { user_id, title_id, slot_number = 1, status = "ongoing" } = req.body;
   try {
-    if (!user_id || !title_id) return error(res, "user_id, title_id는 필수입니다.", 400);
-    const [result] = await pool.query(
-      "INSERT INTO games (user_id, title_id, slot_number, status, last_played) VALUES (?, ?, ?, ?, NOW())",
-      [user_id, title_id, slot_number, status]
-    );
-    const [rows] = await pool.query(
-      `SELECT 
-          g.game_id AS id,
-          gt.title_name AS title,
-          gt.thumbnail_url AS image,
-          g.last_played AS date,
-          g.status,
-          g.title_id,
-          COALESCE(
-            (SELECT name FROM ai_characters WHERE game_id = g.game_id ORDER BY updated_at DESC, created_at DESC LIMIT 1),
-            (SELECT name FROM characters WHERE game_id = g.game_id ORDER BY created_at DESC LIMIT 1)
-          ) AS character_name
-       FROM games g
-       JOIN game_titles gt ON g.title_id = gt.title_id
-       WHERE g.game_id = ?
-       LIMIT 1`,
-      [result.insertId]
-    );
-    success(res, rows[0], "게임 슬롯 생성 완료");
+    const { id, game_id, title, genre, difficulty, metadata } = req.body || {};
+    const requestedId = normalizeId(game_id ?? id);
+    const gameId = requestedId || `game-${uuid()}`;
+
+    await ensureGameExists(gameId, { title, genre, difficulty, metadata });
+
+    const created = await fetchGame(gameId);
+    if (!created) {
+      return res.status(500).json({ error: "Failed to create game" });
+    }
+    res.status(201).json(formatGameRow(created));
   } catch (err) {
-    console.error(err);
-    error(res, "게임 슬롯 생성 실패");
+    console.error("[games.create] error:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
-
-// ===== ai_server_api 명세 대응 엔드포인트 =====
 
 router.get("/:gameId", async (req, res) => {
   try {
@@ -256,170 +215,6 @@ router.patch("/:gameId", async (req, res) => {
     res.json(formatGameRow(updated));
   } catch (err) {
     console.error("[games.patch] error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.get("/:gameId/title", async (req, res) => {
-  try {
-    const gameId = normalizeId(req.params.gameId);
-    const { game, titleId } = await getGameTitleRecord(gameId);
-    if (!game) {
-      return res.status(404).json({ error: "Game not found" });
-    }
-    if (!titleId) {
-      return res.status(404).json({ error: "Title not found for game" });
-    }
-    const title = await fetchTitleById(titleId);
-    if (!title) {
-      return res.status(404).json({ error: "Title not found" });
-    }
-    res.json(title);
-  } catch (err) {
-    console.error("[games.title.get] error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.post("/:gameId/title", async (req, res) => {
-  try {
-    const gameId = normalizeId(req.params.gameId);
-    const { game } = await getGameTitleRecord(gameId);
-    if (!game) {
-      return res.status(404).json({ error: "Game not found" });
-    }
-
-    const { title, title_name, description, image, thumbnail_url, genre, theme, scenario, scenario_json } = req.body || {};
-    const resolvedTitle = (title ?? title_name)?.trim();
-    if (!resolvedTitle) {
-      return res.status(400).json({ error: "title is required" });
-    }
-
-    let scenarioPayload;
-    try {
-      scenarioPayload = serializeScenario(scenario ?? scenario_json);
-    } catch (serializeErr) {
-      if (serializeErr.message === "INVALID_SCENARIO") {
-        return res.status(400).json({ error: "scenario must be valid JSON" });
-      }
-      throw serializeErr;
-    }
-
-    const [result] = await pool.query(
-      `INSERT INTO game_titles (title_name, description, thumbnail_url, theme, scenario_json, created_at)
-       VALUES (?, ?, ?, ?, ?, NOW())`,
-      [resolvedTitle, description ?? null, image ?? thumbnail_url ?? null, genre ?? theme ?? null, scenarioPayload ?? null]
-    );
-
-    await pool.query(
-      `UPDATE games SET title_id = ? WHERE game_id = ?`,
-      [result.insertId, gameId]
-    );
-
-    const created = await fetchTitleById(result.insertId);
-    res.status(201).json(created);
-  } catch (err) {
-    console.error("[games.title.post] error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.patch("/:gameId/title", async (req, res) => {
-  try {
-    const gameId = normalizeId(req.params.gameId);
-    const { game, titleId } = await getGameTitleRecord(gameId);
-    if (!game) {
-      return res.status(404).json({ error: "Game not found" });
-    }
-    if (!titleId) {
-      return res.status(404).json({ error: "Title not found for game" });
-    }
-
-    const { title, title_name, description, image, thumbnail_url, genre, theme, scenario, scenario_json } = req.body || {};
-
-    const fields = [];
-    const params = [];
-
-    if (title !== undefined || title_name !== undefined) {
-      const resolvedTitle = (title ?? title_name)?.trim();
-      if (!resolvedTitle) {
-        return res.status(400).json({ error: "title cannot be empty" });
-      }
-      fields.push("title_name = ?");
-      params.push(resolvedTitle);
-    }
-
-    if (description !== undefined) {
-      fields.push("description = ?");
-      params.push(description ?? null);
-    }
-
-    if (image !== undefined || thumbnail_url !== undefined) {
-      fields.push("thumbnail_url = ?");
-      params.push(image ?? thumbnail_url ?? null);
-    }
-
-    if (genre !== undefined || theme !== undefined) {
-      fields.push("theme = ?");
-      params.push(genre ?? theme ?? null);
-    }
-
-    if (scenario !== undefined || scenario_json !== undefined) {
-      let scenarioPayload;
-      try {
-        scenarioPayload = serializeScenario(scenario ?? scenario_json);
-      } catch (serializeErr) {
-        if (serializeErr.message === "INVALID_SCENARIO") {
-          return res.status(400).json({ error: "scenario must be valid JSON" });
-        }
-        throw serializeErr;
-      }
-      fields.push("scenario_json = ?");
-      params.push(scenarioPayload ?? null);
-    }
-
-    if (fields.length === 0) {
-      return res.status(400).json({ error: "No fields to update" });
-    }
-
-    params.push(titleId);
-
-    const [result] = await pool.query(
-      `UPDATE game_titles SET ${fields.join(", ")} WHERE title_id = ?`,
-      params
-    );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Title not found" });
-    }
-
-    const updated = await fetchTitleById(titleId);
-    res.json(updated);
-  } catch (err) {
-    console.error("[games.title.patch] error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.delete("/:gameId/title", async (req, res) => {
-  try {
-    const gameId = normalizeId(req.params.gameId);
-    const { game, titleId } = await getGameTitleRecord(gameId);
-    if (!game) {
-      return res.status(404).json({ error: "Game not found" });
-    }
-    if (!titleId) {
-      return res.status(404).json({ error: "Title not found for game" });
-    }
-
-    const [result] = await pool.query("DELETE FROM game_titles WHERE title_id = ?", [titleId]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Title not found" });
-    }
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("[games.title.delete] error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

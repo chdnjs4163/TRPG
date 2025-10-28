@@ -29,6 +29,7 @@ import { GameInfo } from "@/components/game-info";
 import CharacterCreation from "@/components/character-creation";
 import CreatingCharacters from "@/components/creating_characters";
 import { type CharacterProfile } from "@/lib/data";
+import { API_BASE_URL } from "@/app/config";
 
 const parseScenario = (raw: unknown): Record<string, unknown> | undefined => {
   if (!raw) return undefined;
@@ -66,7 +67,7 @@ export default function TemplatesPage() {
   const [existingCharacters, setExistingCharacters] = useState<CharacterProfile[]>([]);
 
   // 🚩 삭제 확인용 상태
-  const [dialogState, setDialogState] = useState<{ isOpen: boolean; characterId: number | null }>({
+  const [dialogState, setDialogState] = useState<{ isOpen: boolean; characterId: CharacterProfile["id"] | null }>({
     isOpen: false,
     characterId: null,
   });
@@ -77,7 +78,7 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    fetch(`http://192.168.26.165:1024/api/game_titles?limit=100`, {
+    fetch(`${API_BASE_URL}/api/game_titles?limit=100`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((r) => r.json())
@@ -100,7 +101,7 @@ export default function TemplatesPage() {
   }, []);
 
   // 삭제 버튼 → 다이얼로그 열기
-  const confirmDeleteCharacter = (characterId: number) => {
+  const confirmDeleteCharacter = (characterId: CharacterProfile["id"]) => {
     setDialogState({ isOpen: true, characterId });
   };
 

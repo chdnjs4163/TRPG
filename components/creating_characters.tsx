@@ -18,7 +18,7 @@ interface CreatingCharactersProps {
   onSelectCharacter: (character: CharacterProfile) => void;
   onCreateNew: () => void;
   onCancel: () => void;
-  onDeleteCharacter: (characterId: number) => void; 
+  onDeleteCharacter: (characterId: CharacterProfile["id"]) => void; 
 }
 
 export default function CreatingCharacters({

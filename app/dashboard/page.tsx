@@ -24,12 +24,12 @@ interface NavItem {
 }
 
 interface Game {
-  id: number;
+  id: string;
   title: string;
   date: string;
-  image?: string;
-  status?: string;
-  titleId?: number;
+  image?: string | null;
+  status?: string | null;
+  titleId?: string | number | null;
   characterName?: string | null;
 }
 
@@ -102,14 +102,14 @@ export default function DashboardPage() {
       .then((result) => {
         const rows = Array.isArray(result?.data) ? result.data : [];
         const normalized: Game[] = rows.map((game: any) => ({
-          id: Number(game.id),
-          title: game.title,
-          date: game.date,
-          image: game.image ?? undefined,
-          status: game.status ?? undefined,
-          titleId: game.titleId ?? game.title_id ?? undefined,
+          id: String(game.id ?? game.game_id ?? ""),
+          title: game.title ?? "제목 없음",
+          date: game.date ?? game.updated_at ?? game.created_at ?? "",
+          image: game.image ?? null,
+          status: game.status ?? null,
+          titleId: game.titleId ?? game.title_id ?? game.metadata?.templateId ?? null,
           characterName: game.characterName ?? game.character_name ?? null,
-        }));
+        })).filter((game) => game.id.length > 0);
         setRecentGames(normalized);
       })
       .catch((err) => console.error("최근 게임 불러오기 실패:", err));

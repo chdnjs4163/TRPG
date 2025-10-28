@@ -10,6 +10,16 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { API_BASE_URL } from "@/app/config";
+
+interface RecentGame {
+  id: string;
+  title: string;
+  date?: string | null;
+  image?: string | null;
+  genre?: string | null;
+  description?: string | null;
+}
 
 export default function RecentPage() {
   const [currentPage, setCurrentPage] = useState(0);
@@ -17,16 +27,29 @@ export default function RecentPage() {
   const [selectedGenre, setSelectedGenre] = useState("all");
   const ITEMS_PER_PAGE = 8;
 
-  const [recentGames, setRecentGames] = useState<any[]>([]);
+  const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
     if (!userId) return;
-    fetch(`http://192.168.26.165:1024/api/games/user/${userId}`, {
+    fetch(`${API_BASE_URL}/api/games/user/${userId}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then(r => r.json())
-      .then(result => setRecentGames(result?.data || []))
+      .then(result => {
+        const rows = Array.isArray(result?.data) ? result.data : [];
+        const normalized: RecentGame[] = rows
+          .map((game: any) => ({
+            id: String(game.id ?? game.game_id ?? ""),
+            title: game.title ?? "제목 없음",
+            date: game.date ?? game.updated_at ?? game.created_at ?? null,
+            image: game.image ?? null,
+            genre: game.genre ?? null,
+            description: game.description ?? null,
+          }))
+          .filter((game) => game.id.length > 0);
+        setRecentGames(normalized);
+      })
       .catch(e => console.error('최근 게임 불러오기 실패:', e));
   }, []);
 
@@ -143,7 +166,9 @@ export default function RecentPage() {
                   </CardHeader>
                   <CardContent className="p-4">
                     <CardTitle className="text-lg mb-2">{game.title}</CardTitle>
-                    <CardDescription className="mb-3">{game.description}</CardDescription>
+                    <CardDescription className="mb-3">
+                      {game.description || "진행 중인 시나리오"}
+                    </CardDescription>
                   </CardContent>
                 </Card>
               </Link>

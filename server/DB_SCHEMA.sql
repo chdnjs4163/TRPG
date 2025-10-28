@@ -4,7 +4,7 @@
 -- - 구분: 기본 인증/마스터, AI 세션 관련
 -- ============================================================
 
--- 1. 기본 인증 및 마스터 데이터 (기존 레거시 슬롯 시스템)
+-- 1. 기본 인증 및 마스터 데이터
 CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
@@ -25,30 +25,6 @@ CREATE TABLE game_titles (
   theme VARCHAR(50) DEFAULT 'default',
   scenario_json JSON NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE games (
-  game_id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT NOT NULL,
-  title_id INT NOT NULL,
-  slot_number INT DEFAULT 1,
-  status ENUM('ongoing','finished') DEFAULT 'ongoing',
-  last_played DATETIME DEFAULT CURRENT_TIMESTAMP,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (title_id) REFERENCES game_titles(title_id) ON DELETE CASCADE
-);
-
-CREATE TABLE characters (
-  character_id INT AUTO_INCREMENT PRIMARY KEY,
-  game_id INT NOT NULL,
-  name VARCHAR(50) NOT NULL,
-  class VARCHAR(50),
-  level INT DEFAULT 1,
-  stats JSON,
-  inventory JSON,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (game_id) REFERENCES games(game_id) ON DELETE CASCADE
 );
 
 -- 2. AI 세션 중심 신규 구조 (현재 메인 플로우)

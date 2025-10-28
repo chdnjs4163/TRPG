@@ -7,7 +7,6 @@ const {
   parseJson,
   serializeJson,
   ensureGameExists,
-  ensureCharacterExists,
 } = require("../utils/ai");
 
 const toNumber = (value) => {
@@ -172,49 +171,6 @@ async function fetchAiCharacter(characterId) {
   );
   return rows[0] || null;
 }
-async function importLegacyCharacter(characterId) {
-  const [legacyRows] = await pool.query(
-    `SELECT 
-        c.character_id,
-        c.game_id,
-        c.name,
-        c.class,
-        c.level,
-        c.stats,
-        c.inventory,
-        g.user_id
-     FROM characters c
-     LEFT JOIN games g ON c.game_id = g.game_id
-     WHERE c.character_id = ?
-     LIMIT 1`,
-    [characterId]
-  );
-  if (legacyRows.length === 0) return null;
-  const legacy = legacyRows[0];
-  const gameId = normalizeId(legacy.game_id);
-  if (!gameId) return null;
-  const userId =
-    normalizeId(legacy.user_id) || `legacy-user-${gameId}`;
-  const statsObj = parseJson(legacy.stats, {});
-  const inventoryObj = parseJson(legacy.inventory, []);
-  await ensureCharacterExists(normalizeId(legacy.character_id), {
-    gameId,
-    userId,
-    name: legacy.name,
-    className: legacy.class,
-    level: Number(legacy.level) || 1,
-    stats: statsObj,
-    inventory: inventoryObj,
-  });
-  return await fetchAiCharacter(characterId);
-}
-async function getCharacterOrImport(characterId) {
-  const normalizedId = normalizeId(characterId);
-  if (!normalizedId) return null;
-  const existing = await fetchAiCharacter(normalizedId);
-  if (existing) return existing;
-  return await importLegacyCharacter(normalizedId);
-}
 async function getCharactersForGame(gameId) {
   const normalizedGameId = normalizeId(gameId);
   if (!normalizedGameId) return [];
@@ -227,38 +183,7 @@ async function getCharactersForGame(gameId) {
     `,
     [normalizedGameId]
   );
-  const rows = [...aiRows];
-  const seen = new Set(rows.map((row) => normalizeId(row.character_id)));
-  const [legacyRows] = await pool.query(
-    `SELECT 
-        c.character_id,
-        c.game_id,
-        c.name,
-        c.class,
-        c.level,
-        c.stats,
-        c.inventory,
-        g.user_id
-     FROM characters c
-     LEFT JOIN games g ON c.game_id = g.game_id
-     WHERE c.game_id = ?`,
-    [normalizedGameId]
-  );
-  for (const legacy of legacyRows) {
-    const charId = normalizeId(legacy.character_id);
-    if (!charId || seen.has(charId)) continue;
-    const imported = await importLegacyCharacter(charId);
-    if (imported) {
-      rows.push(imported);
-      seen.add(charId);
-    }
-  }
-  rows.sort((a, b) => {
-    const aTime = new Date(a.created_at || 0).getTime();
-    const bTime = new Date(b.created_at || 0).getTime();
-    return aTime - bTime;
-  });
-  return rows;
+  return aiRows;
 }
 // 특정 게임의 캐릭터 목록 (호환용)
 router.get("/game/:gameId", async (req, res) => {
@@ -520,16 +445,13 @@ async function resolvePrimaryCharacterIdForGame(gameId) {
      FROM ai_characters
      WHERE game_id = ?
      ORDER BY updated_at DESC, created_at DESC
-     LIMIT 1`,
+      LIMIT 1`,
     [normalizedGameId]
   );
   if (rows.length > 0) {
     return normalizeId(rows[0].character_id);
   }
-  const imported = await getCharactersForGame(normalizedGameId);
-  if (imported.length === 0) return null;
-  const candidate = imported[imported.length - 1] || imported[0];
-  return normalizeId(candidate.character_id || candidate.id);
+  return null;
 }
 // 캐릭터 수정 (PUT 호환 + PATCH)
 router.put("/:characterId", async (req, res) => {
@@ -622,7 +544,7 @@ router.delete("/:characterId", async (req, res) => {
 router.get("/detail/:characterId", async (req, res) => {
   try {
     const characterId = normalizeId(req.params.characterId);
-    const row = await getCharacterOrImport(characterId);
+    const row = await fetchAiCharacter(characterId);
     if (!row) return error(res, "캐릭터를 찾을 수 없음", 404);
     success(res, mapCharacter(row));
   } catch (err) {
@@ -634,7 +556,7 @@ router.get("/detail/:characterId", async (req, res) => {
 router.get("/:characterId", async (req, res) => {
   try {
     const characterId = normalizeId(req.params.characterId);
-    const row = await getCharacterOrImport(characterId);
+    const row = await fetchAiCharacter(characterId);
     if (!row) {
       return res.status(404).json({ error: "Character not found" });
     }

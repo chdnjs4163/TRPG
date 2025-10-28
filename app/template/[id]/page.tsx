@@ -6,6 +6,7 @@ import axios from "axios";
 import { GameInfo } from "@/components/game-info";
 import CharacterCreation from "@/components/character-creation";
 import type { CharacterProfile as UiCharacterProfile } from "@/lib/data";
+import { API_BASE_URL } from "@/app/config";
 
 interface DbCharacter {
   id?: number | string;
@@ -68,11 +69,11 @@ export default function TemplateDetailPage() {
   const [step, setStep] = useState<'info' | 'creation'>('info');
   const [gameTemplate, setGameTemplate] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [gameId, setGameId] = useState<number | null>(null);
+  const [gameId, setGameId] = useState<string | null>(null);
 
-  const TITLES_API_URL = "http://192.168.26.165:1024/api/game_titles";
-  const GAMES_API_URL = "http://192.168.26.165:1024/api/games";
-  const CHAR_API_URL = "http://192.168.26.165:1024/api/characters";
+  const TITLES_API_URL = `${API_BASE_URL}/api/game_titles`;
+  const GAMES_API_URL = `${API_BASE_URL}/api/games`;
+  const CHAR_API_URL = `${API_BASE_URL}/api/characters`;
 
   // --- 게임 템플릿 정보 불러오기 ---
   useEffect(() => {
@@ -83,46 +84,51 @@ export default function TemplateDetailPage() {
         setGameTemplate(template || null);
       } catch (err) {
         console.error("게임 템플릿 불러오기 실패:", err);
+      } finally {
+        setLoading(false);
       }
     };
     fetchGameTemplate();
   }, [templateId]);
 
-  // --- 사용자 슬롯 조회 (생성은 실제 시작 시점으로 이동) ---
-  useEffect(() => {
-    const bootstrap = async () => {
-      try {
-        console.error("template userid:",localStorage.getItem('userId') );
-        const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
-        if (!userId || !templateId) return;
-        // 1) 해당 사용자/타이틀의 최근 슬롯 찾기 (생성 X)
-        const found = await axios.get(`${GAMES_API_URL}/find`, { params: { user_id: userId, title_id: templateId } });
-        const slot = found.data?.data || found.data;
-        const gid = slot?.id ?? null;
-        setGameId(gid);
-      } catch (err) {
-        console.error('슬롯/캐릭터 초기화 실패:', err);
-      } finally {
-        setLoading(false);
-      }
+  const ensureGameInstance = async (): Promise<string> => {
+    if (gameId) return gameId;
+    const templateTitle =
+      gameTemplate?.title ??
+      gameTemplate?.title_name ??
+      gameTemplate?.name ??
+      "새로운 모험";
+    const generatedId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? `game-${crypto.randomUUID()}`
+        : `game-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+    const payload = {
+      id: generatedId,
+      title: templateTitle,
+      genre: gameTemplate?.theme ?? gameTemplate?.genre ?? null,
+      metadata: {
+        templateId,
+        templateTitle,
+        thumbnail: gameTemplate?.thumbnail_url ?? gameTemplate?.image ?? null,
+        status: "ongoing",
+        genre: gameTemplate?.theme ?? gameTemplate?.genre ?? null,
+        description: gameTemplate?.description ?? null,
+      },
     };
-    bootstrap();
-  }, [templateId]);
-
-  // 실제 시작 시점에만 게임 슬롯 생성 보장
-  const ensureGameSlot = async (): Promise<number> => {
-    const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
-    if (!userId) throw new Error('로그인이 필요합니다.');
-    const created = await axios.post(GAMES_API_URL, { user_id: userId, title_id: Number(templateId), slot_number: 1, status: 'ongoing' });
-    const gid = (created.data?.data || created.data)?.id as number;
-    setGameId(gid);
-    return gid;
+    const res = await axios.post(GAMES_API_URL, payload);
+    const created = res.data?.data || res.data;
+    const resolvedId =
+      typeof created === "object" && created
+        ? created.id ?? created.game_id ?? generatedId
+        : generatedId;
+    setGameId(String(resolvedId));
+    return String(resolvedId);
   };
 
   // --- 캐릭터 생성 ---
   const handleCharacterCreated = async (newChar: UiCharacterProfile) => {
     try {
-      const gid = await ensureGameSlot();
+      const gid = await ensureGameInstance();
       const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') : null;
       if (!userId) throw new Error('로그인이 필요합니다.');
       const stats = newChar.stats ?? {};
@@ -140,12 +146,7 @@ export default function TemplateDetailPage() {
       const res = await axios.post(CHAR_API_URL, payload);
       const created: DbCharacter = (res.data?.data || res.data) as DbCharacter;
       const rawCharacterId = created.character_id ?? created.id ?? gid;
-      const parsedCharacterId =
-        typeof rawCharacterId === "string" ? Number(rawCharacterId) : rawCharacterId;
-      const characterId =
-        typeof parsedCharacterId === "number" && Number.isFinite(parsedCharacterId)
-          ? parsedCharacterId
-          : gid;
+      const characterId = typeof rawCharacterId === "string" ? rawCharacterId : String(rawCharacterId);
       const createdUi: UiCharacterProfile = {
         id: characterId,
         name: created.name || newChar.name,
